@@ -37,6 +37,7 @@ import {registerPasskeyHandlers} from '@electron/main/Passkeys';
 import {getAppMetricsSnapshot, getDesktopInfo, getGpuInfo} from '@electron/main/PlatformInfo';
 import {requirePrivilegedRendererDocumentSender} from '@electron/main/PrivilegedRendererDocuments';
 import {getStreamerModeCaptureAppStatus} from '@electron/main/StreamerModeProcessDetection';
+import {getActivityManager} from '@electron/main/ActivityManagerIpc';
 import {
 	acquireStreamingPriority,
 	getStreamingPriorityDiagnostics,
@@ -143,6 +144,7 @@ export function registerIpcHandlers(): void {
 	ipcMain.handle('get-openh264-status', () => getOpenH264Status());
 	ipcMain.handle('set-openh264-enabled', (_event, enabled: unknown) => setOpenH264Enabled(Boolean(enabled)));
 	ipcMain.handle('streamer-mode:get-capture-app-status', () => getStreamerModeCaptureAppStatus());
+	ipcMain.handle('activity:get-current', () => getActivityManager().currentActivities());
 	ipcMain.handle('system-idle-time-ms', (): number => {
 		return Math.max(0, powerMonitor.getSystemIdleTime() * 1000);
 	});

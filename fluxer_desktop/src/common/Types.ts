@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type {DesktopActivity} from '@electron/common/RpcActivityTypes';
 import type {VoiceEngineV2BridgeHardwareEncoderApi} from '@fluxer/voice_engine_v2/bridge';
 import type {
 	AuthenticationResponseJSON,
@@ -702,6 +703,8 @@ export interface ElectronAPI {
 	showNotification: (options: NotificationOptions) => Promise<NotificationResult>;
 	shouldPlayNotificationSound: () => Promise<boolean>;
 	getStreamerModeCaptureAppStatus: () => Promise<StreamerModeCaptureAppStatus>;
+	getCurrentActivities: () => Promise<DesktopActivity[]>;
+	onActivitiesUpdated: (listener: (activities: DesktopActivity[]) => void) => () => void;
 	closeNotification: (id: string) => void;
 	closeNotifications: (ids: Array<string>) => void;
 	onNotificationClick: (callback: (id: string, url?: string) => void) => () => void;

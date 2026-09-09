@@ -13,6 +13,7 @@ import LocalPresence from '@app/features/presence/state/LocalPresence';
 import TransientPresence from '@app/features/presence/state/TransientPresence';
 import Relationships from '@app/features/relationship/state/Relationships';
 import MobileLayout from '@app/features/ui/state/MobileLayout';
+import type {GatewayUserActivity} from '@app/features/gateway/types/GatewayPresenceTypes';
 import {type CustomStatus, fromGatewayCustomStatus} from '@app/features/user/state/CustomStatus';
 import {CustomStatusEmitter} from '@app/features/user/state/CustomStatusEmitter';
 import {ME} from '@fluxer/constants/src/AppConstants';
@@ -23,6 +24,8 @@ import {RelationshipTypes} from '@fluxer/constants/src/UserConstants';
 import type {UserPrivate} from '@fluxer/schema/src/domains/user/UserResponseSchemas';
 import {makeAutoObservable, observable, reaction} from 'mobx';
 
+const EMPTY_ACTIVITIES: Array<GatewayUserActivity> = [];
+
 interface FlattenedPresence {
 	status: StatusType;
 	timestamp: number;
@@ -30,6 +33,7 @@ interface FlattenedPresence {
 	mobile?: boolean;
 	guildIds: Set<string>;
 	customStatus: CustomStatus | null;
+	activities: Array<GatewayUserActivity>;
 }
 
 type StatusListener = (userId: string, status: StatusType, isMobile: boolean) => void;
@@ -40,6 +44,7 @@ class Presence {
 	private remotePresenceCountsByGuild = new Map<string, number>();
 	private remotePresenceCountVersionByGuild = observable.map<string, number>();
 	private customStatuses = new Map<string, CustomStatus | null>();
+	private activitiesByUser = new Map<string, Array<GatewayUserActivity>>();
 	statuses = new Map<string, StatusType>();
 	private mobilePresenceUserIds = new Map<string, true>();
 	presenceVersion = 0;
@@ -165,6 +170,10 @@ class Presence {
 		return this.customStatuses.get(userId) ?? null;
 	}
 
+	getActivities(userId: string): Array<GatewayUserActivity> {
+		return this.activitiesByUser.get(userId) ?? EMPTY_ACTIVITIES;
+	}
+
 	getPresenceCount(guildId: string): number {
 		this.remotePresenceCountVersionByGuild.get(guildId);
 		const currentUserId = Authentication.currentUserId;
@@ -265,6 +274,7 @@ class Presence {
 		this.remotePresenceCountVersionByGuild.clear();
 		this.statuses.clear();
 		this.customStatuses.clear();
+		this.activitiesByUser.clear();
 		this.mobilePresenceUserIds.clear();
 		this.bumpPresenceVersion();
 		this.statuses.set(user.id, localStatus);
@@ -304,6 +314,7 @@ class Presence {
 		this.remotePresenceCountVersionByGuild.clear();
 		this.statuses.clear();
 		this.customStatuses.clear();
+		this.activitiesByUser.clear();
 		this.mobilePresenceUserIds.clear();
 		this.bumpPresenceVersion();
 		for (const userId of previousUserIds) {
@@ -368,7 +379,15 @@ class Presence {
 	}
 
 	handlePresenceUpdate(presence: WirePresence): void {
-		const {guild_id: guildIdRaw, user, status, afk, mobile, custom_status: customStatusPayload} = presence;
+		const {
+			guild_id: guildIdRaw,
+			user,
+			status,
+			afk,
+			mobile,
+			custom_status: customStatusPayload,
+			activities,
+		} = presence;
 		const normalizedStatus = normalizeStatus(status);
 		const userId = user.id;
 		const customStatus = fromGatewayCustomStatus(customStatusPayload);
@@ -391,10 +410,12 @@ class Presence {
 				mobile,
 				guildIds,
 				customStatus,
+				activities: activities ?? [],
 			};
 			this.presences.set(userId, flattened);
 			this.addPresenceCounts(flattened);
 			this.customStatuses.set(userId, customStatus);
+			this.activitiesByUser.set(userId, activities ?? []);
 			this.updateStatusFromPresence(userId, flattened);
 			this.bumpPresenceVersion();
 			queueMicrotask(() => CustomStatusEmitter.emitPresenceChange(userId));
@@ -418,6 +439,11 @@ class Presence {
 		}
 		existing.customStatus = customStatus;
 		this.customStatuses.set(userId, customStatus);
+		if (activities !== undefined) {
+			const nextActivities = activities ?? [];
+			existing.activities = nextActivities;
+			this.activitiesByUser.set(userId, nextActivities);
+		}
 		if (normalizedStatus === StatusTypes.OFFLINE && guildIdRaw == null) {
 			existing.guildIds.delete(ME);
 			if (existing.guildIds.size === 0) {
@@ -431,7 +457,7 @@ class Presence {
 	}
 
 	private handleReadyPresence(presence: WirePresence, initialGuildIds?: Set<string>, hasMeContext = false): void {
-		const {user, status, afk, mobile, custom_status: customStatusPayload} = presence;
+		const {user, status, afk, mobile, custom_status: customStatusPayload, activities} = presence;
 		const normalizedStatus = normalizeStatus(status);
 		const customStatus = fromGatewayCustomStatus(customStatusPayload);
 		const userId = user.id;
@@ -450,10 +476,12 @@ class Presence {
 			mobile,
 			guildIds,
 			customStatus,
+			activities: activities ?? [],
 		};
 		this.presences.set(userId, flattened);
 		this.addPresenceCounts(flattened);
 		this.customStatuses.set(userId, customStatus);
+		this.activitiesByUser.set(userId, activities ?? []);
 		this.updateStatusFromPresence(userId, flattened);
 		this.bumpPresenceVersion();
 		queueMicrotask(() => CustomStatusEmitter.emitPresenceChange(userId));
@@ -571,6 +599,7 @@ class Presence {
 		this.presences.delete(userId);
 		this.mobilePresenceUserIds.delete(userId);
 		this.customStatuses.delete(userId);
+		this.activitiesByUser.delete(userId);
 		this.bumpPresenceVersion();
 		const oldStatus = this.statuses.get(userId);
 		if (oldStatus === undefined) {

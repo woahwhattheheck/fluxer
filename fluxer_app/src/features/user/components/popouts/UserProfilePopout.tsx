@@ -3,6 +3,7 @@
 import {showDmActionErrorModal} from '@app/features/app/components/alerts/DmActionErrorModal';
 import {ConfirmModal} from '@app/features/app/components/dialogs/ConfirmModal';
 import {CustomStatusDisplay} from '@app/features/app/components/shared/custom_status_display/CustomStatusDisplay';
+import {UserActivityDisplay} from '@app/features/presence/components/UserActivityDisplay';
 import {useHover} from '@app/features/app/hooks/useHover';
 import RuntimeConfig from '@app/features/app/state/RuntimeConfig';
 import Authentication from '@app/features/auth/state/Authentication';
@@ -348,6 +349,7 @@ export const UserProfilePopout: React.FC<UserProfilePopoutProps> = observer(
 									/>
 								</div>
 							)}
+							{!isWebhook && <UserActivityDisplay userId={user.id} />}
 							{!isWebhook && (
 								<VoiceActivitySection
 									userId={user.id}

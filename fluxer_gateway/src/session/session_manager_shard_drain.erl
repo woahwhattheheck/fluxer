@@ -180,6 +180,7 @@ build_session_data(Data, IdentifyData, Version, SocketPid, SessionId, UserDataMa
         version => Version,
         user_data => term_detach:detach(build_user_data(UserDataMap)),
         custom_status => DetachedCustomStatus,
+        activities => term_detach:detach(resolve_activities(Presence)),
         token_hash => utils:hash_token(maps:get(token, IdentifyData)),
         auth_session_id_hash => extract_auth_session_id_hash(Data),
         properties => term_detach:detach(Properties),
@@ -247,6 +248,19 @@ detach_custom_status(CustomStatus) when is_map(CustomStatus) ->
         M when is_map(M) -> M;
         _ -> null
     end.
+
+-spec resolve_activities(term()) -> [map()] | null.
+resolve_activities(null) ->
+    null;
+resolve_activities(Presence) when is_map(Presence) ->
+    case map_utils:get_safe(Presence, <<"activities">>, null) of
+        Activities when is_list(Activities) ->
+            term_detach:detach(presence_update:normalize_activities(Activities));
+        _ ->
+            null
+    end;
+resolve_activities(_) ->
+    null.
 
 -spec resolve_custom_status(map(), term()) -> map() | null.
 resolve_custom_status(Data, Presence) ->
