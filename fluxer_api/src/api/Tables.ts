@@ -169,6 +169,7 @@ import {
 	GUILD_COLUMNS,
 	GUILD_EMOJI_BY_EMOJI_ID_COLUMNS,
 	GUILD_EMOJI_COLUMNS,
+	GUILD_EVENT_COLUMNS,
 	GUILD_MEMBER_BY_USER_ID_COLUMNS,
 	GUILD_MEMBER_COLUMNS,
 	GUILD_MEMBERSHIP_METADATA_COLUMNS,
@@ -180,6 +181,7 @@ import {
 	type GuildBanByUserIdRow,
 	type GuildBanRow,
 	type GuildEmojiRow,
+	type GuildEventRow,
 	type GuildMemberByUserIdRow,
 	type GuildMemberRow,
 	type GuildMembershipMetadataRow,
@@ -532,6 +534,11 @@ export const GuildEmojis = defineTable<GuildEmojiRow, 'guild_id' | 'emoji_id'>({
 	name: 'guild_emojis',
 	columns: GUILD_EMOJI_COLUMNS,
 	primaryKey: ['guild_id', 'emoji_id'],
+});
+export const GuildEvents = defineTable<GuildEventRow, 'guild_id' | 'event_id'>({
+	name: 'guild_events',
+	columns: GUILD_EVENT_COLUMNS,
+	primaryKey: ['guild_id', 'event_id'],
 });
 export const GuildEmojisByEmojiId = defineTable<GuildEmojiRow, 'emoji_id'>({
 	name: 'guild_emojis_by_emoji_id',
