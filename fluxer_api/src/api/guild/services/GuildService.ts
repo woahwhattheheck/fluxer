@@ -17,6 +17,7 @@ import type {IGuildRepositoryAggregate} from '@app/api/guild/repositories/IGuild
 import {GuildChannelService} from '@app/api/guild/services/GuildChannelService';
 import {GuildContentService} from '@app/api/guild/services/GuildContentService';
 import {GuildDataService} from '@app/api/guild/services/GuildDataService';
+import {GuildEventService} from '@app/api/guild/services/GuildEventService';
 import {GuildMemberService} from '@app/api/guild/services/GuildMemberService';
 import {createGuildMfaEnforcer} from '@app/api/guild/services/GuildMfaEnforcement';
 import {GuildModerationService} from '@app/api/guild/services/GuildModerationService';
@@ -90,6 +91,7 @@ export class GuildService {
 	public readonly roles: GuildRoleService;
 	public readonly moderation: GuildModerationService;
 	public readonly content: GuildContentService;
+	public readonly events: GuildEventService;
 	public readonly channels: GuildChannelService;
 	public readonly search: GuildSearchService;
 	private readonly guildRepository: IGuildRepositoryAggregate;
@@ -183,6 +185,7 @@ export class GuildService {
 			assetDeletionQueue,
 			limitConfigService,
 		);
+		this.events = new GuildEventService(gatewayService, avatarService, snowflakeService);
 		this.channels = new GuildChannelService(
 			channelRepository,
 			guildRepository,
