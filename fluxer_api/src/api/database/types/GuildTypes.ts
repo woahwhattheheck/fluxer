@@ -3,6 +3,7 @@
 import type {
 	ChannelID,
 	EmojiID,
+	EventID,
 	GuildID,
 	InviteCode,
 	RoleID,
@@ -289,6 +290,50 @@ export const GUILD_STICKER_BY_STICKER_ID_COLUMNS = [
 	'tags',
 	'creator_id',
 ] as const satisfies ReadonlyArray<keyof GuildStickerRow>;
+
+export interface GuildEventRow {
+	guild_id: GuildID;
+	event_id: EventID;
+	creator_id: UserID;
+	name: string;
+	description: Nullish<string>;
+	scheduled_start_time: Date;
+	scheduled_end_time: Date;
+	channel_id: Nullish<ChannelID>;
+	location: Nullish<string>;
+	recurrence_interval: Nullish<number>;
+	recurrence_unit: Nullish<string>;
+	password_hash: Nullish<string>;
+	version: number;
+}
+
+export const GUILD_EVENT_COLUMNS = [
+	'guild_id',
+	'event_id',
+	'creator_id',
+	'name',
+	'description',
+	'scheduled_start_time',
+	'scheduled_end_time',
+	'channel_id',
+	'location',
+	'recurrence_interval',
+	'recurrence_unit',
+	'password_hash',
+	'version',
+] as const satisfies ReadonlyArray<keyof GuildEventRow>;
+
+export interface GuildEventAttendeeRow {
+	event_id: EventID;
+	user_id: UserID;
+	guild_id: GuildID;
+}
+
+export const GUILD_EVENT_ATTENDEE_COLUMNS = [
+	'event_id',
+	'user_id',
+	'guild_id',
+] as const satisfies ReadonlyArray<keyof GuildEventAttendeeRow>;
 
 export interface GuildMembershipMetadataRow {
 	guild_id: GuildID;
