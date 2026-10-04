@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import {SnowflakeStringType} from '@fluxer/schema/src/primitives/SchemaPrimitives';
 import {z} from 'zod';
 
 export const ActivityTypeSchema = z.union([
@@ -28,6 +29,7 @@ export const ActivityAssetsResponse = z.object({
 export const ActivityResponse = z.object({
 	name: z.string().min(1).describe('The activity name'),
 	type: ActivityTypeSchema.describe('Activity kind: playing, streaming, listening, watching, custom, or competing'),
+	application_id: SnowflakeStringType.nullish().describe('The application associated with the activity'),
 	details: z.string().nullish(),
 	state: z.string().nullish(),
 	timestamps: ActivityTimestampsResponse.nullish(),

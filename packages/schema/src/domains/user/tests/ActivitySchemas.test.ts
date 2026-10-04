@@ -9,14 +9,35 @@ describe('ActivityResponse', () => {
 	});
 
 	it('accepts null and omitted optional metadata', () => {
-		const input = {name: 'Activity', type: 0, details: null, state: null, timestamps: null, assets: null};
+		const input = {
+			name: 'Activity',
+			type: 0,
+			application_id: null,
+			details: null,
+			state: null,
+			timestamps: null,
+			assets: null,
+		};
 		expect(ActivityResponse.parse(input)).toEqual(input);
 	});
+
+	it.each(['1', '123456789', '9223372036854775807'])('preserves the application snowflake %s', (application_id) => {
+		const input = {name: 'Activity', type: 0, application_id};
+		expect(ActivityResponse.parse(input)).toEqual(input);
+	});
+
+	it.each(['', '001', '-1', '+1', 'not-a-snowflake', 123, {}])(
+		'rejects malformed application ID %s',
+		(application_id) => {
+			expect(ActivityResponse.safeParse({name: 'Activity', type: 0, application_id}).success).toBe(false);
+		},
+	);
 
 	it('preserves known metadata and strips unknown fields at every level', () => {
 		const input = {
 			name: 'Activity',
 			type: 2,
+			application_id: '123456789',
 			details: 'Track',
 			state: 'Artist',
 			extra: 'discard',
@@ -26,6 +47,7 @@ describe('ActivityResponse', () => {
 		expect(ActivityResponse.parse(input)).toEqual({
 			name: 'Activity',
 			type: 2,
+			application_id: '123456789',
 			details: 'Track',
 			state: 'Artist',
 			timestamps: {start: 1791096000000, end: null},
