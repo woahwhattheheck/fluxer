@@ -23,7 +23,7 @@ import {normalizeStatus, StatusTypes} from '@fluxer/constants/src/StatusConstant
 import {RelationshipTypes} from '@fluxer/constants/src/UserConstants';
 import type {ActivityResponse} from '@fluxer/schema/src/domains/user/ActivitySchemas';
 import type {UserPrivate} from '@fluxer/schema/src/domains/user/UserResponseSchemas';
-import {makeAutoObservable, observable, reaction} from 'mobx';
+import {makeAutoObservable, observable, observableShallow, reaction} from 'mobx';
 
 interface FlattenedPresence {
 	status: StatusType;
@@ -64,7 +64,7 @@ class Presence {
 				presences: false,
 				remotePresenceCountsByGuild: false,
 				remotePresenceCountVersionByGuild: false,
-				mobilePresenceUserIds: observable.shallow,
+				mobilePresenceUserIds: observableShallow,
 				suppressVersionBump: false,
 			},
 			{autoBind: true},

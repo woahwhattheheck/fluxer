@@ -1,5 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import {AdminAuditReadActions} from '@app/api/admin/AdminAuditActions';
+import {recordAdminRead, recordAdminWrite} from '@app/api/admin/AdminAuditRecorder';
+import {createUserID} from '@app/api/BrandedTypes';
+import {Config} from '@app/api/Config';
+import {
+	type InstancePolicyConfig,
+	REGISTRATION_PENDING_APPROVAL_TRAIT,
+	REGISTRATION_REJECTED_TRAIT,
+} from '@app/api/instance/InstanceConfigRepository';
+import {deriveSsoRedirectUri, normalizeAndValidateSsoConfig} from '@app/api/instance/SsoConfigValidation';
+import {requireAdminACL} from '@app/api/middleware/AdminMiddleware';
+import {RateLimitMiddleware} from '@app/api/middleware/RateLimitMiddleware';
+import {OpenAPI} from '@app/api/middleware/ResponseTypeMiddleware';
+import {getGatewayRolloutConfigPublisher, getInstanceConfigRepository} from '@app/api/middleware/ServiceSingletons';
+import {RateLimitConfigs} from '@app/api/RateLimitConfig';
+import type {HonoApp, HonoEnv} from '@app/api/types/HonoEnv';
+import {Validator} from '@app/api/Validator';
 import {AdminACLs} from '@fluxer/constants/src/AdminACLs';
 import {InstancePolicyTransitionNotAllowedError} from '@fluxer/errors/src/domains/core/InstancePolicyTransitionNotAllowedError';
 import {
@@ -14,26 +31,14 @@ import {
 	RegistrationUrlIdParam,
 } from '@fluxer/schema/src/domains/admin/AdminSchemas';
 import {GatewayRolloutConfigSchema} from '@fluxer/schema/src/domains/admin/GatewayRolloutSchemas';
+import {ScreenShareDeliveryConfigSchema} from '@fluxer/schema/src/domains/admin/ScreenShareDeliverySchemas';
+import {VoiceNoiseSuppressionConfigSchema} from '@fluxer/schema/src/domains/admin/VoiceNoiseSuppressionSchemas';
 import {UserIdParam} from '@fluxer/schema/src/domains/common/CommonParamSchemas';
+import {ExperimentDeliveryConfigSchema} from '@fluxer/schema/src/domains/experiment/ExperimentSchemas';
+import type {InstanceBranding} from '@fluxer/schema/src/domains/instance/InstanceSchemas';
 import {SmtpEmailProvider} from '@pkgs/email/src/SmtpEmailProvider';
 import type {Context} from 'hono';
 import {createMiddleware} from 'hono/factory';
-import {createUserID} from '../../BrandedTypes';
-import {Config} from '../../Config';
-import {
-	type InstanceBrandingConfig,
-	type InstancePolicyConfig,
-	REGISTRATION_PENDING_APPROVAL_TRAIT,
-	REGISTRATION_REJECTED_TRAIT,
-} from '../../instance/InstanceConfigRepository';
-import {deriveSsoRedirectUri, normalizeAndValidateSsoConfig} from '../../instance/SsoConfigValidation';
-import {requireAdminACL} from '../../middleware/AdminMiddleware';
-import {RateLimitMiddleware} from '../../middleware/RateLimitMiddleware';
-import {OpenAPI} from '../../middleware/ResponseTypeMiddleware';
-import {getGatewayRolloutConfigPublisher, getInstanceConfigRepository} from '../../middleware/ServiceSingletons';
-import {RateLimitConfigs} from '../../RateLimitConfig';
-import type {HonoApp, HonoEnv} from '../../types/HonoEnv';
-import {Validator} from '../../Validator';
 
 const INSTANCE_BRANDING_ENTITY_ID = 0n;
 
@@ -51,9 +56,21 @@ function omitUndefinedFields<T extends object>(value: T): Partial<T> {
 
 async function buildInstanceConfigResponse(): Promise<InstanceConfigResponse> {
 	const instanceConfigRepository = getInstanceConfigRepository();
-	const [ssoConfig, gatewayRollout, registrationConfig, registrationUrls, pendingRegistrations] = await Promise.all([
+	const [
+		ssoConfig,
+		gatewayRollout,
+		voiceNoiseSuppression,
+		screenShareDelivery,
+		experimentDelivery,
+		registrationConfig,
+		registrationUrls,
+		pendingRegistrations,
+	] = await Promise.all([
 		instanceConfigRepository.getSsoConfig(),
 		instanceConfigRepository.getGatewayRolloutConfig(),
+		instanceConfigRepository.getVoiceNoiseSuppressionConfig(),
+		instanceConfigRepository.getScreenShareDeliveryConfig(),
+		instanceConfigRepository.getExperimentDeliveryConfig(),
 		instanceConfigRepository.getRegistrationConfig(),
 		instanceConfigRepository.getRegistrationUrlsForAdmin(),
 		instanceConfigRepository.getPendingRegistrations(),
@@ -83,6 +100,9 @@ async function buildInstanceConfigResponse(): Promise<InstanceConfigResponse> {
 			redirect_uri: deriveSsoRedirectUri(Config.endpoints.webApp),
 		},
 		gateway_rollout: gatewayRollout,
+		voice_noise_suppression: voiceNoiseSuppression,
+		screen_share_delivery: screenShareDelivery,
+		experiment_delivery: experimentDelivery,
 		registration: {
 			...registrationConfig,
 			urls: registrationUrls,
@@ -153,16 +173,25 @@ function completesInitialSetup(data: InstanceConfigUpdateRequest, setupConfigure
 	);
 }
 
-async function grantSetupCompleterAdminACL(ctx: Context<HonoEnv>): Promise<void> {
+async function grantSetupCompleterAdminACL(ctx: Context<HonoEnv>): Promise<boolean> {
 	const user = ctx.get('user');
 	if (!user || ctx.get('authTokenType') !== 'session' || hasAdminAuthenticationACL(user.acls)) {
-		return;
+		return false;
 	}
 	const nextACLs = new Set(user.acls);
 	nextACLs.add(AdminACLs.WILDCARD);
 	const updatedUser = await ctx.get('userRepository').patchUpsert(user.id, {acls: nextACLs}, user.toRow());
 	ctx.set('user', updatedUser);
 	ctx.set('adminUserAcls', updatedUser.acls);
+	return true;
+}
+
+function listSuppliedSections(data: InstanceConfigUpdateRequest): string | undefined {
+	const sections = Object.entries(data)
+		.filter(([, value]) => value != null)
+		.map(([key]) => key)
+		.sort();
+	return sections.length > 0 ? sections.join(',') : undefined;
 }
 
 export function InstanceConfigAdminController(app: HonoApp) {
@@ -182,7 +211,17 @@ export function InstanceConfigAdminController(app: HonoApp) {
 			tags: 'Admin',
 		}),
 		async (ctx) => {
-			return ctx.json(await buildInstanceConfigResponse());
+			const response = await buildInstanceConfigResponse();
+			await recordAdminRead(ctx, {
+				targetType: 'instance_config',
+				targetId: 0n,
+				action: AdminAuditReadActions.GET_INSTANCE_CONFIG,
+				metadata: {
+					registration_url_count: response.registration.urls.length,
+					pending_registration_count: response.registration.pending_registrations.length,
+				},
+			});
+			return ctx.json(response);
 		},
 	);
 	app.patch(
@@ -213,6 +252,38 @@ export function InstanceConfigAdminController(app: HonoApp) {
 				const validated = GatewayRolloutConfigSchema.parse(merged);
 				await instanceConfigRepository.setGatewayRolloutConfig(validated);
 				await getGatewayRolloutConfigPublisher().publish(validated);
+			}
+			if (data.voice_noise_suppression) {
+				const patch = omitUndefinedFields(data.voice_noise_suppression);
+				if (Object.keys(patch).length > 0) {
+					const currentNoiseSuppression = await instanceConfigRepository.getVoiceNoiseSuppressionConfig();
+					const validated = VoiceNoiseSuppressionConfigSchema.parse({
+						...currentNoiseSuppression,
+						...patch,
+						config_version: currentNoiseSuppression.config_version + 1,
+					});
+					await instanceConfigRepository.setVoiceNoiseSuppressionConfig(validated);
+				}
+			}
+			if (data.screen_share_delivery) {
+				const patch = omitUndefinedFields(data.screen_share_delivery);
+				if (Object.keys(patch).length > 0) {
+					const currentScreenShareDelivery = await instanceConfigRepository.getScreenShareDeliveryConfig();
+					const validated = ScreenShareDeliveryConfigSchema.parse({
+						...currentScreenShareDelivery,
+						...patch,
+						config_version: currentScreenShareDelivery.config_version + 1,
+					});
+					await instanceConfigRepository.setScreenShareDeliveryConfig(validated);
+				}
+			}
+			if (data.experiment_delivery) {
+				const currentExperimentDelivery = await instanceConfigRepository.getExperimentDeliveryConfig();
+				const validated = ExperimentDeliveryConfigSchema.parse({
+					...currentExperimentDelivery,
+					...data.experiment_delivery,
+				});
+				await instanceConfigRepository.setExperimentDeliveryConfig(validated);
 			}
 			if (data.sso) {
 				const sso = data.sso;
@@ -271,6 +342,11 @@ export function InstanceConfigAdminController(app: HonoApp) {
 								wordmark_url: readOptionalField(data.app_public.branding, 'wordmark_url'),
 								favicon_url: readOptionalField(data.app_public.branding, 'favicon_url'),
 								theme_color: readOptionalField(data.app_public.branding, 'theme_color'),
+								status_page_url: readOptionalField(data.app_public.branding, 'status_page_url'),
+								status_page_incident_history_url: readOptionalField(
+									data.app_public.branding,
+									'status_page_incident_history_url',
+								),
 							})
 						: undefined,
 					legal: data.app_public.legal
@@ -372,10 +448,20 @@ export function InstanceConfigAdminController(app: HonoApp) {
 					}),
 				});
 			}
+			let grantedSetupCompleterAdmin = false;
 			if (shouldGrantSetupCompleterAdmin) {
-				await grantSetupCompleterAdminACL(ctx);
+				grantedSetupCompleterAdmin = await grantSetupCompleterAdminACL(ctx);
 				await instanceConfigRepository.markAdminBootstrapped();
 			}
+			await recordAdminWrite(ctx, {
+				targetType: 'instance_config',
+				targetId: 0n,
+				action: 'update_instance_config',
+				metadata: {
+					sections: listSuppliedSections(data),
+					granted_acls: grantedSetupCompleterAdmin ? AdminACLs.WILDCARD : undefined,
+				},
+			});
 			return ctx.json(await buildInstanceConfigResponse());
 		},
 	);
@@ -404,8 +490,14 @@ export function InstanceConfigAdminController(app: HonoApp) {
 				base64Image: image ?? null,
 				errorPath: 'image',
 			});
-			const brandingPatch: Partial<InstanceBrandingConfig> = {[`${kind}_url`]: prepared.newCdnUrl};
+			const brandingPatch: Partial<InstanceBranding> = {[`${kind}_url`]: prepared.newCdnUrl};
 			await instanceConfigRepository.setAppPublicConfig({branding: brandingPatch});
+			await recordAdminWrite(ctx, {
+				targetType: 'instance_config',
+				targetId: 0n,
+				action: 'upload_branding_asset',
+				metadata: {kind, cleared: prepared.newCdnUrl === null},
+			});
 			return ctx.json(await buildInstanceConfigResponse());
 		},
 	);
@@ -426,6 +518,7 @@ export function InstanceConfigAdminController(app: HonoApp) {
 		}),
 		async (ctx) => {
 			const data = ctx.req.valid('json');
+			let result: InstanceEmailSmtpTestResponse;
 			try {
 				const provider = new SmtpEmailProvider({
 					host: data.host,
@@ -438,10 +531,17 @@ export function InstanceConfigAdminController(app: HonoApp) {
 					socketTimeoutMs: 10000,
 				});
 				await provider.verify();
-				return ctx.json({ok: true, error: null});
+				result = {ok: true, error: null};
 			} catch (error) {
-				return ctx.json({ok: false, error: error instanceof Error ? error.message : String(error)});
+				result = {ok: false, error: error instanceof Error ? error.message : String(error)};
 			}
+			await recordAdminWrite(ctx, {
+				targetType: 'instance_config',
+				targetId: 0n,
+				action: 'test_smtp_connection',
+				metadata: {port: data.port, secure: data.secure, ok: result.ok},
+			});
+			return ctx.json(result);
 		},
 	);
 	app.post(
@@ -468,6 +568,12 @@ export function InstanceConfigAdminController(app: HonoApp) {
 				maxUses: data.max_uses ?? null,
 				approvalRequired: data.approval_required,
 			});
+			await recordAdminWrite(ctx, {
+				targetType: 'registration_url',
+				targetId: 0n,
+				action: 'create_registration_url',
+				metadata: {approval_required: data.approval_required, max_uses: data.max_uses},
+			});
 			return ctx.json({
 				registration_url: created.registrationUrl,
 				code: created.code,
@@ -492,6 +598,11 @@ export function InstanceConfigAdminController(app: HonoApp) {
 		}),
 		async (ctx) => {
 			await instanceConfigRepository.revokeRegistrationUrl(ctx.req.valid('param').registration_url_id);
+			await recordAdminWrite(ctx, {
+				targetType: 'registration_url',
+				targetId: 0n,
+				action: 'revoke_registration_url',
+			});
 			return ctx.json(await buildInstanceConfigResponse());
 		},
 	);
@@ -514,6 +625,7 @@ export function InstanceConfigAdminController(app: HonoApp) {
 		async (ctx) => {
 			const userId = ctx.req.valid('param').user_id.toString();
 			const decision = ctx.req.valid('json').status === 'approved' ? 'approve' : 'reject';
+			await instanceConfigRepository.getPendingRegistrations();
 			await updatePendingRegistrationUser(ctx, userId, decision);
 			await instanceConfigRepository.removePendingRegistration(userId);
 			return ctx.json(await buildInstanceConfigResponse());
@@ -592,11 +704,10 @@ async function applyInstancePolicyUpdate(
 			patch.deferred_phone_gate_member_threshold = policy.deferred_phone_gate.member_threshold;
 		}
 	}
-	if (Object.keys(patch).length > 0) {
+	if (patch.premium_mode !== undefined) {
+		await ctx.get('limitConfigService').updatePolicyConfig(patch);
+	} else if (Object.keys(patch).length > 0) {
 		await instanceConfigRepository.setInstancePolicyConfig(patch);
-	}
-	if (policy.premium_mode !== undefined && policy.premium_mode !== current.premium_mode) {
-		await ctx.get('limitConfigService').reloadForPolicyChange();
 	}
 }
 
@@ -608,6 +719,12 @@ async function updatePendingRegistrationUser(
 	const userRepository = ctx.get('userRepository');
 	const user = await userRepository.findUnique(createUserID(BigInt(userId)));
 	if (!user) {
+		await recordAdminWrite(ctx, {
+			targetType: 'user',
+			targetId: BigInt(userId),
+			action: decision === 'approve' ? 'approve_registration' : 'reject_registration',
+			metadata: {account_found: false},
+		});
 		return;
 	}
 	const traits = new Set(user.traits);

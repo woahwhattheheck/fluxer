@@ -19,10 +19,7 @@ import {configureUserDataPath} from '@electron/common/UserDataPath';
 import {registerAutostartHandlers} from '@electron/main/Autostart';
 import {
 	addLinuxHardwareVideoEncodeFeatures,
-	addLinuxScreenCapturePipeWireFeature,
-	addMacosPreSequoiaScreenCaptureDisabledFeatures,
 	addWindowsHardwareVideoEncodeFeatures,
-	addWindowsWebRtcWgcDisabledFeatures,
 	appendConfiguredChromiumSwitches,
 	appendDisabledChromiumFeatures,
 	appendEnabledBlinkFeature,
@@ -44,6 +41,7 @@ import {
 	formatDesktopDebugInfo,
 	getDesktopDebugInfo,
 	getLaunchAppUrlOverride,
+	getLaunchDesktopTroubleshootingSettings,
 	getLaunchNetLogPath,
 	hasDesktopDebugInfoArg,
 	logDesktopDebugInfo,
@@ -58,7 +56,7 @@ import {cleanupIpcHandlers, registerIpcHandlers} from '@electron/main/IpcHandler
 import {initializeJumpList} from '@electron/main/JumpList';
 import {describeLaunchDiagnosticOptions, shouldStartHiddenAtLogin} from '@electron/main/LaunchOptions';
 import {cleanupVirtmic, registerVirtmicHandlers} from '@electron/main/LinuxAudioCapture';
-import {initializeMainI18n} from '@electron/main/MainI18n';
+import {initializeMainI18n, t} from '@electron/main/MainI18n';
 import {createApplicationMenu} from '@electron/main/Menu';
 import {cleanupNativeAudio, registerNativeAudioHandlers} from '@electron/main/NativeAudio';
 import {
@@ -67,7 +65,6 @@ import {
 } from '@electron/main/NativeHardwareEncoder';
 import {runNativeModulePreflight} from '@electron/main/NativeModulePreflight';
 import {cleanupNativeScreenCapture, registerNativeScreenCaptureHandlers} from '@electron/main/NativeScreenCapture';
-import {appendOpenH264Switches} from '@electron/main/OpenH264Manager';
 import {cleanupLinuxChromiumSpellcheckDictionaries} from '@electron/main/Spellcheck';
 import {registerUpdater} from '@electron/main/Updater';
 import {
@@ -174,17 +171,13 @@ if (launchConfigurationError) {
 	if (shouldResetWindowStateOnLaunch(process.argv)) {
 		clearSavedWindowBounds();
 	}
-	const disableHardwareAccelerationRequested =
-		shouldDisableHardwareAccelerationForLaunch(process.argv) ||
-		getDesktopTroubleshootingSettings().disableHardwareAcceleration;
-	if (process.platform !== 'darwin' && disableHardwareAccelerationRequested) {
+	const disableHardwareAcceleration = getLaunchDesktopTroubleshootingSettings().disableHardwareAcceleration;
+	if (disableHardwareAcceleration) {
 		app.disableHardwareAcceleration();
 		log.info('Hardware acceleration disabled for this launch', {
 			commandLine: shouldDisableHardwareAccelerationForLaunch(process.argv),
 			persistentSetting: getDesktopTroubleshootingSettings().disableHardwareAcceleration,
 		});
-	} else if (process.platform === 'darwin' && disableHardwareAccelerationRequested) {
-		log.info('Hardware acceleration disable request ignored on macOS');
 	}
 	log.info('Launch diagnostic modes', launchDiagnosticOptions);
 	const CHANNEL_APP_NAME = DESKTOP_APP_NAME;
@@ -239,13 +232,18 @@ if (launchConfigurationError) {
 		app.exit(0);
 	}
 	try {
+		runStartupPhase('main-i18n', initializeMainI18n);
+	} catch (error) {
+		log.error('[Init] Failed to initialize native i18n:', error);
+	}
+	try {
 		runStartupPhase('native-module-preflight', runNativeModulePreflight);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		log.error('[NativeModulePreflight] Fatal native module preflight failure:', error);
 		console.error(message);
 		try {
-			dialog.showErrorBox('Fluxer failed to start', message);
+			dialog.showErrorBox(t('desktop.startup.failedTitle'), message);
 		} catch {}
 		app.exit(1);
 		process.exit(1);
@@ -260,15 +258,10 @@ if (launchConfigurationError) {
 	}
 	const disabledChromiumFeatures = new Set(BASE_DISABLED_CHROMIUM_FEATURES);
 	const enabledChromiumFeatures = new Set<string>();
-	if (!disableHardwareAccelerationRequested) {
+	if (!disableHardwareAcceleration) {
 		addLinuxHardwareVideoEncodeFeatures(enabledChromiumFeatures);
 		addWindowsHardwareVideoEncodeFeatures(enabledChromiumFeatures);
 	}
-	addLinuxScreenCapturePipeWireFeature(enabledChromiumFeatures);
-	if (process.platform === 'darwin') {
-		addMacosPreSequoiaScreenCaptureDisabledFeatures(disabledChromiumFeatures);
-	}
-	addWindowsWebRtcWgcDisabledFeatures(disabledChromiumFeatures);
 	appendDisabledChromiumFeatures(disabledChromiumFeatures);
 	if (enabledChromiumFeatures.size > 0) {
 		appendEnabledChromiumFeatures(enabledChromiumFeatures);
@@ -279,12 +272,9 @@ if (launchConfigurationError) {
 	}
 	appendLinuxOzonePlatformHint();
 	if (process.platform === 'win32') {
-		app.commandLine.appendSwitch('enable-h264-mf');
-		app.commandLine.appendSwitch('enable-h264-mf-zero-copy');
 		app.setToastActivatorCLSID(WINDOWS_TOAST_ACTIVATOR_CLSID);
 		app.setAppUserModelId(WINDOWS_APP_USER_MODEL_ID);
 	}
-	appendOpenH264Switches();
 	const gotTheLock = app.requestSingleInstanceLock();
 	if (!gotTheLock) {
 		app.quit();
@@ -322,11 +312,6 @@ if (launchConfigurationError) {
 					log.error('[DebugInfo] Failed to collect desktop debug info:', error);
 				}
 				try {
-					runStartupPhase('main-i18n', initializeMainI18n);
-				} catch (error) {
-					log.error('[Init] Failed to initialize native i18n:', error);
-				}
-				try {
 					runStartupPhase('deep-links', initializeDeepLinks);
 				} catch (error) {
 					log.error('[Init] Failed to initialize deep links:', error);
@@ -355,12 +340,6 @@ if (launchConfigurationError) {
 					});
 				} catch (error) {
 					log.error('[Init] Failed to start activity detection:', error);
-				}
-				try {
-					const {initOpenH264} = await import('@electron/main/OpenH264Manager');
-					initOpenH264();
-				} catch (error) {
-					log.warn('[Init] OpenH264 initialization skipped:', error);
 				}
 				try {
 					runStartupPhase('autostart-handlers', registerAutostartHandlers);

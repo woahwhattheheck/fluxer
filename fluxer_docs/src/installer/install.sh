@@ -64,6 +64,7 @@ FLUXER_MIN_COMPOSE='2.20.2'
 FLUXER_MIN_COMPOSE_OVERLAY='2.24.4'
 FLUXER_READY_TIMEOUT=600
 FLUXER_READY_INTERVAL=5
+FLUXER_READY_REPORT=30
 FLUXER_VAPID_ATTEMPTS=8
 FLUXER_SEC1_HEADER='30770201010420'
 FLUXER_INSPECT_FORMAT='{{index .Config.Labels "com.docker.compose.service"}} {{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} {{.State.ExitCode}}'
@@ -131,6 +132,36 @@ Caddyfile
 FILES
 }
 
+fluxer_compose_names() {
+	cat <<'NAMES'
+compose.yaml
+compose.yml
+docker-compose.yml
+docker-compose.yaml
+NAMES
+}
+
+fluxer_compose_name_in() {
+	for fluxer_candidate in $(fluxer_compose_names); do
+		if [ -e "$1/$fluxer_candidate" ]; then
+			printf '%s' "$fluxer_candidate"
+			return 0
+		fi
+	done
+	return 1
+}
+
+fluxer_compose_base='docker-compose.yml'
+fluxer_compose_base_from=''
+
+fluxer_placed_name() {
+	if [ "$1" = 'docker-compose.yml' ]; then
+		printf '%s' "$fluxer_compose_base"
+	else
+		printf '%s' "$1"
+	fi
+}
+
 # The file Compose bind-mounts from the working directory, with the service that
 # mounts it.
 #
@@ -177,7 +208,7 @@ Usage: sh install.sh --domain <host> --email <address> [options]
 
 Options:
   --domain <host>          Hostname the instance answers on. Prompted when absent.
-  --email <address>        Address the operator reads. Prompted when absent.
+  --email <address>        Contact email for web push. Prompted when absent.
   --engine <command>       Container engine to drive. Default docker, or podman
                            when docker is absent.
   --dir <path>             Working directory. Default ~/fluxer, or the working
@@ -372,15 +403,21 @@ done
 #
 # An install writes a new instance, so it never adopts the working directory.
 if [ -z "$opt_dir" ]; then
+	fluxer_here_compose=$(fluxer_compose_name_in "$(pwd)" || true)
 	if { [ "$opt_update" -eq 1 ] || [ "$opt_rollback" -eq 1 ]; } &&
-		[ -s "$(pwd)/docker-compose.yml" ] && [ -e "$(pwd)/.env" ] &&
-		grep -q '^FLUXER_' "$(pwd)/.env" 2>/dev/null; then
+		[ -n "$fluxer_here_compose" ] && [ -s "$(pwd)/$fluxer_here_compose" ] &&
+		[ -e "$(pwd)/.env" ] && grep -q '^FLUXER_' "$(pwd)/.env" 2>/dev/null; then
 		opt_dir="$(pwd)"
 		fluxer_say "Acting on the instance in $opt_dir, the working directory. Pass --dir to name another."
-	elif [ -n "${HOME:-}" ]; then
-		opt_dir="$HOME/fluxer"
 	else
-		opt_dir="$(pwd)/fluxer"
+		if [ -n "${HOME:-}" ]; then
+			opt_dir="$HOME/fluxer"
+		else
+			opt_dir="$(pwd)/fluxer"
+		fi
+		if [ "$opt_update" -eq 1 ] || [ "$opt_rollback" -eq 1 ]; then
+			fluxer_say "The working directory holds no instance, so this acts on $opt_dir. Pass --dir to name another."
+		fi
 	fi
 fi
 case $opt_dir in
@@ -614,7 +651,7 @@ fluxer_resolve_values() {
 		if [ "$opt_non_interactive" -eq 1 ] || [ "$opt_dry_run" -eq 1 ] || [ ! -t 0 ]; then
 			fluxer_bad_usage '--email is required.'
 		fi
-		fluxer_prompt 'Address you read' || fluxer_fail 1 'No address given.'
+		fluxer_prompt 'Contact email for web push' || fluxer_fail 1 'No address given.'
 		opt_email=$fluxer_prompt_value
 	fi
 	fluxer_valid_domain "$opt_domain" || fluxer_bad_usage "--domain $opt_domain is not a lowercase hostname. Give a bare hostname such as chat.example.com."
@@ -749,8 +786,9 @@ fluxer_fetch_stack() {
 fluxer_place_stack() {
 	while read -r fluxer_file; do
 		[ -n "$fluxer_file" ] || continue
-		mv "$fluxer_scratch/$fluxer_file.part" "$opt_dir/$fluxer_file"
+		mv "$fluxer_scratch/$fluxer_file.part" "$opt_dir/$(fluxer_placed_name "$fluxer_file")"
 	done < "$fluxer_scratch/files"
+	rm -f "$fluxer_scratch/all-services"
 	fluxer_say "Stack files in $opt_dir are at ref $opt_ref."
 }
 
@@ -759,7 +797,7 @@ fluxer_compose_project() {
 		printf '%s' "$COMPOSE_PROJECT_NAME"
 		return 0
 	fi
-	sed -n 's/^name: *//p' "$opt_dir/docker-compose.yml" | head -n 1
+	sed -n 's/^name: *//p' "$opt_dir/$fluxer_compose_base" | head -n 1
 }
 
 fluxer_project=''
@@ -767,7 +805,7 @@ fluxer_project=''
 fluxer_set_project() {
 	fluxer_project=$(fluxer_compose_project)
 	if [ -z "$fluxer_project" ]; then
-		fluxer_fail 2 "docker-compose.yml in $opt_dir declares no project name, so the volume names cannot be derived."
+		fluxer_fail 2 "$fluxer_compose_base in $opt_dir declares no project name, so the volume names cannot be derived."
 	fi
 }
 
@@ -889,32 +927,62 @@ fluxer_write_env() {
 }
 
 fluxer_stack_ready() {
+	: > "$fluxer_scratch/not-ready"
 	$fluxer_engine compose ps -aq > "$fluxer_scratch/ids" 2>/dev/null || return 1
 	[ -s "$fluxer_scratch/ids" ] || return 1
 	xargs $fluxer_engine inspect --format "$FLUXER_INSPECT_FORMAT" < "$fluxer_scratch/ids" > "$fluxer_scratch/state" 2>/dev/null || return 1
 	fluxer_ready=1
 	fluxer_init_done=0
+	fluxer_ready_count=0
+	fluxer_service_count=0
 	while read -r fluxer_service fluxer_status fluxer_health fluxer_code; do
+		[ -n "$fluxer_service" ] || continue
+		fluxer_service_count=$((fluxer_service_count + 1))
 		case $fluxer_status in
 			running)
 				case $fluxer_health in
-					healthy|none) ;;
-					*) fluxer_ready=0 ;;
+					healthy|none) fluxer_ready_count=$((fluxer_ready_count + 1)) ;;
+					*)
+						printf '%s running (%s)\n' "$fluxer_service" "$fluxer_health" >> "$fluxer_scratch/not-ready"
+						fluxer_ready=0
+						;;
 				esac
 				;;
 			exited)
 				if [ "$fluxer_service" = 'seaweedfs-init' ] && [ "$fluxer_code" = '0' ]; then
 					fluxer_init_done=1
+					fluxer_ready_count=$((fluxer_ready_count + 1))
 				else
+					printf '%s exited (%s)\n' "$fluxer_service" "$fluxer_code" >> "$fluxer_scratch/not-ready"
 					fluxer_ready=0
 				fi
 				;;
 			*)
+				printf '%s %s\n' "$fluxer_service" "$fluxer_status" >> "$fluxer_scratch/not-ready"
 				fluxer_ready=0
 				;;
 		esac
 	done < "$fluxer_scratch/state"
-	[ "$fluxer_ready" -eq 1 ] && [ "$fluxer_init_done" -eq 1 ]
+	if [ "$fluxer_ready" -eq 0 ]; then
+		return 1
+	fi
+	if [ "$fluxer_init_done" -eq 1 ]; then
+		return 0
+	fi
+	if fluxer_stack_defines_service 'seaweedfs-init'; then
+		printf 'seaweedfs-init has not completed\n' >> "$fluxer_scratch/not-ready"
+		fluxer_service_count=$((fluxer_service_count + 1))
+		return 1
+	fi
+	return 0
+}
+
+fluxer_not_ready_detail() {
+	if [ -s "$fluxer_scratch/not-ready" ]; then
+		printf 'These services are not ready:\n%s' "$(sed 's/^/  /' "$fluxer_scratch/not-ready")"
+	else
+		printf '%s' "$fluxer_engine compose reports no container state for this project."
+	fi
 }
 
 # Readiness comes from Compose state, which is local and authoritative.
@@ -926,12 +994,19 @@ fluxer_stack_ready() {
 # exited (0) because it is a one-shot bucket initialiser.
 fluxer_wait_ready() {
 	fluxer_waited=0
+	fluxer_reported=0
+	fluxer_ready_count=0
+	fluxer_service_count=0
 	while [ "$fluxer_waited" -lt "$FLUXER_READY_TIMEOUT" ]; do
 		if fluxer_stack_ready; then
 			return 0
 		fi
 		sleep "$FLUXER_READY_INTERVAL"
 		fluxer_waited=$((fluxer_waited + FLUXER_READY_INTERVAL))
+		if [ "$((fluxer_waited - fluxer_reported))" -ge "$FLUXER_READY_REPORT" ]; then
+			fluxer_reported=$fluxer_waited
+			fluxer_say "$fluxer_ready_count of $fluxer_service_count services are ready."
+		fi
 	done
 	return 1
 }
@@ -1104,11 +1179,18 @@ fluxer_require_instance() {
 	if [ ! -e "$opt_dir/.env" ]; then
 		fluxer_fail 2 "No .env in $opt_dir. That directory holds no instance. Run install.sh with neither --update nor --rollback to set one up."
 	fi
-	if [ ! -e "$opt_dir/docker-compose.yml" ]; then
-		fluxer_fail 2 "No docker-compose.yml in $opt_dir. That directory does not hold an instance."
+	fluxer_resolve_compose_base
+	if [ ! -e "$opt_dir/$fluxer_compose_base" ]; then
+		if [ -n "$fluxer_compose_base_from" ]; then
+			fluxer_fail 2 "$fluxer_compose_base_from names $fluxer_compose_base first, and $opt_dir/$fluxer_compose_base is not there. Put that file back, or name the file the instance runs on first in COMPOSE_FILE."
+		fi
+		fluxer_fail 2 "No compose file in $opt_dir. Compose looks for compose.yaml, compose.yml, docker-compose.yml and docker-compose.yaml there, and that directory holds none of them, so it does not hold an instance."
 	fi
-	if [ ! -s "$opt_dir/docker-compose.yml" ]; then
-		fluxer_fail 2 "$opt_dir/docker-compose.yml is empty. A redirect that captured a failed download leaves that, and Compose refuses an empty compose file. Put the file back from a backup or from the record of the last upgrade, then run this again."
+	if [ ! -s "$opt_dir/$fluxer_compose_base" ]; then
+		fluxer_fail 2 "$opt_dir/$fluxer_compose_base is empty. A redirect that captured a failed download leaves that, and Compose refuses an empty compose file. Put the file back from a backup or from the record of the last upgrade, then run this again."
+	fi
+	if [ "$fluxer_compose_base" != 'docker-compose.yml' ]; then
+		fluxer_say "Compose loads $fluxer_compose_base in $opt_dir, so the stack's docker-compose.yml is written to that name."
 	fi
 }
 
@@ -1141,14 +1223,13 @@ fluxer_env_scalar() {
 	printf '%s' "$fluxer_scalar"
 }
 
-fluxer_require_compose_files() {
+fluxer_read_compose_setting() {
 	fluxer_compose_file=${COMPOSE_FILE:-}
 	fluxer_compose_from="the environment"
 	if [ -z "$fluxer_compose_file" ]; then
 		fluxer_compose_file=$(fluxer_env_scalar COMPOSE_FILE)
 		fluxer_compose_from="$opt_dir/.env"
 	fi
-	[ -n "$fluxer_compose_file" ] || return 0
 	fluxer_path_sep=${COMPOSE_PATH_SEPARATOR:-}
 	if [ -z "$fluxer_path_sep" ]; then
 		fluxer_path_sep=$(fluxer_env_scalar COMPOSE_PATH_SEPARATOR)
@@ -1156,6 +1237,36 @@ fluxer_require_compose_files() {
 	if [ -z "$fluxer_path_sep" ]; then
 		fluxer_path_sep=':'
 	fi
+}
+
+fluxer_resolve_compose_base() {
+	fluxer_read_compose_setting
+	fluxer_compose_base_from=''
+	fluxer_rest=$fluxer_compose_file
+	while [ -n "$fluxer_rest" ]; do
+		fluxer_name=${fluxer_rest%%"$fluxer_path_sep"*}
+		case $fluxer_rest in
+			*"$fluxer_path_sep"*) fluxer_rest=${fluxer_rest#*"$fluxer_path_sep"} ;;
+			*) fluxer_rest='' ;;
+		esac
+		[ -n "$fluxer_name" ] || continue
+		fluxer_compose_base=${fluxer_name#./}
+		fluxer_compose_base=${fluxer_compose_base#"$opt_dir"/}
+		fluxer_compose_base_from="COMPOSE_FILE from $fluxer_compose_from"
+		break
+	done
+	if [ -z "$fluxer_compose_base_from" ]; then
+		fluxer_compose_base=$(fluxer_compose_name_in "$opt_dir" || printf '%s' 'docker-compose.yml')
+		return 0
+	fi
+	case $fluxer_compose_base in
+		*/*) fluxer_fail 2 "$fluxer_compose_base_from names $fluxer_name first, and that file is not directly in $opt_dir. This script refreshes only the files in the directory it acts on, so the upgrade would leave the file Compose loads on the old stack. Move it into $opt_dir and name it there, or upgrade by hand." ;;
+	esac
+}
+
+fluxer_require_compose_files() {
+	fluxer_read_compose_setting
+	[ -n "$fluxer_compose_file" ] || return 0
 	fluxer_compose_count=0
 	fluxer_rest=$fluxer_compose_file
 	while [ -n "$fluxer_rest" ]; do
@@ -1185,7 +1296,7 @@ Leave the COMPOSE_FILE line as it is. Without $fluxer_name the edge container bi
 	done
 	if [ "$fluxer_compose_count" -gt 1 ] &&
 		! fluxer_version_ge "$fluxer_compose_version" "$FLUXER_MIN_COMPOSE_OVERLAY"; then
-		fluxer_fail 2 "COMPOSE_FILE from $fluxer_compose_from loads $fluxer_compose_count files and this host runs Compose $fluxer_compose_version. Every overlay this script downloads uses the !override tag, which needs Compose $FLUXER_MIN_COMPOSE_OVERLAY or newer. Upgrade Compose, or load only docker-compose.yml."
+		fluxer_fail 2 "COMPOSE_FILE from $fluxer_compose_from loads $fluxer_compose_count files and this host runs Compose $fluxer_compose_version. Every overlay this script downloads uses the !override tag, which needs Compose $FLUXER_MIN_COMPOSE_OVERLAY or newer. Upgrade Compose, or load only $fluxer_compose_base."
 	fi
 }
 
@@ -1315,10 +1426,11 @@ fluxer_save_current_files() {
 	chmod 600 "$fluxer_record/.env"
 	while read -r fluxer_file; do
 		[ -n "$fluxer_file" ] || continue
-		if [ -s "$opt_dir/$fluxer_file" ]; then
-			cp -p "$opt_dir/$fluxer_file" "$fluxer_record/$fluxer_file"
-		elif [ -e "$opt_dir/$fluxer_file" ]; then
-			fluxer_fail 7 "$opt_dir/$fluxer_file is empty, so the record would hold a file a rollback could not use. Put the file back before upgrading."
+		fluxer_placed="$opt_dir/$(fluxer_placed_name "$fluxer_file")"
+		if [ -s "$fluxer_placed" ]; then
+			cp -p "$fluxer_placed" "$fluxer_record/$fluxer_file"
+		elif [ -e "$fluxer_placed" ]; then
+			fluxer_fail 7 "$fluxer_placed is empty, so the record would hold a file a rollback could not use. Put the file back before upgrading."
 		fi
 	done < "$fluxer_scratch/files"
 }
@@ -1499,7 +1611,7 @@ fluxer_postgres_major() {
 # The refreshed file is still in the scratch directory when this runs, so a
 # refusal here leaves the instance exactly as it was.
 fluxer_guard_postgres_major() {
-	fluxer_old_major=$(fluxer_postgres_major "$opt_dir/docker-compose.yml")
+	fluxer_old_major=$(fluxer_postgres_major "$opt_dir/$fluxer_compose_base")
 	fluxer_new_major=$(fluxer_postgres_major "$fluxer_scratch/docker-compose.yml.part")
 	if [ -z "$fluxer_old_major" ] || [ -z "$fluxer_new_major" ]; then
 		return 0
@@ -1550,7 +1662,7 @@ $(fluxer_compose_error '  ')"
 	while read -r fluxer_file fluxer_service; do
 		[ -n "$fluxer_service" ] || continue
 		if ! grep -qxF "$fluxer_service" "$fluxer_scratch/services"; then
-			fluxer_say "Skipping the restart of $fluxer_service, because the docker-compose.yml in $opt_dir defines no service by that name."
+			fluxer_say "Skipping the restart of $fluxer_service, because the $fluxer_compose_base in $opt_dir defines no service by that name."
 			continue
 		fi
 		fluxer_say "Restarting $fluxer_service, because $fluxer_file is mounted into it and up -d does not reload a mounted file."
@@ -1588,7 +1700,8 @@ fluxer_newest_record() {
 fluxer_verify_stack() {
 	fluxer_say 'Waiting for every service to report ready.'
 	if ! fluxer_wait_ready; then
-		fluxer_fail 6 "The stack is not ready after $FLUXER_READY_TIMEOUT seconds. Read $fluxer_engine compose logs in $opt_dir."
+		fluxer_fail 6 "The stack is not ready after $FLUXER_READY_TIMEOUT seconds. $(fluxer_not_ready_detail)
+Read $fluxer_engine compose logs in $opt_dir."
 	fi
 	fluxer_origin_value=$(fluxer_public_origin)
 	if [ -n "$fluxer_origin_value" ]; then
@@ -1656,20 +1769,21 @@ fluxer_plan_update() {
 	fluxer_changed=0
 	while read -r fluxer_file; do
 		[ -n "$fluxer_file" ] || continue
-		if [ ! -e "$opt_dir/$fluxer_file" ]; then
-			fluxer_say "    $fluxer_file is new"
+		fluxer_placed=$(fluxer_placed_name "$fluxer_file")
+		if [ ! -e "$opt_dir/$fluxer_placed" ]; then
+			fluxer_say "    $fluxer_placed is new"
 			fluxer_changed=1
-		elif cmp -s "$opt_dir/$fluxer_file" "$fluxer_scratch/$fluxer_file.part"; then
-			fluxer_say "    $fluxer_file is unchanged"
+		elif cmp -s "$opt_dir/$fluxer_placed" "$fluxer_scratch/$fluxer_file.part"; then
+			fluxer_say "    $fluxer_placed is unchanged"
 		else
-			fluxer_say "    $fluxer_file changes"
+			fluxer_say "    $fluxer_placed changes"
 			fluxer_changed=1
 		fi
 	done < "$fluxer_scratch/files"
 	if [ "$fluxer_changed" -eq 0 ]; then
 		fluxer_say "  note          ref $opt_ref moves no stack file"
 	fi
-	fluxer_old_major=$(fluxer_postgres_major "$opt_dir/docker-compose.yml")
+	fluxer_old_major=$(fluxer_postgres_major "$opt_dir/$fluxer_compose_base")
 	fluxer_new_major=$(fluxer_postgres_major "$fluxer_scratch/docker-compose.yml.part")
 	if [ -n "$fluxer_old_major" ] && [ -n "$fluxer_new_major" ] && [ "$fluxer_old_major" != "$fluxer_new_major" ]; then
 		fluxer_say "  refusal       postgres moves from $fluxer_old_major to $fluxer_new_major, which this script does not do"
@@ -1862,7 +1976,7 @@ fluxer_run_rollback() {
 	while read -r fluxer_file; do
 		[ -n "$fluxer_file" ] || continue
 		if [ -s "$fluxer_rollback_dir/$fluxer_file" ]; then
-			cp -p "$fluxer_rollback_dir/$fluxer_file" "$opt_dir/$fluxer_file"
+			cp -p "$fluxer_rollback_dir/$fluxer_file" "$opt_dir/$(fluxer_placed_name "$fluxer_file")"
 		elif [ -e "$fluxer_rollback_dir/$fluxer_file" ]; then
 			fluxer_fail 3 "$fluxer_rollback_dir/$fluxer_file is empty, so restoring it would replace a working file with nothing. Nothing was restored. Take the file from another record or from the ref the record names."
 		fi
@@ -1957,7 +2071,8 @@ if ! $fluxer_engine compose up -d; then
 fi
 fluxer_say 'Waiting for every service to report ready. This takes several minutes on the first start, which pulls eighteen images.'
 if ! fluxer_wait_ready; then
-	fluxer_fail 6 "The stack is not ready after $FLUXER_READY_TIMEOUT seconds. Read $fluxer_engine compose logs in $opt_dir."
+	fluxer_fail 6 "The stack is not ready after $FLUXER_READY_TIMEOUT seconds. $(fluxer_not_ready_detail)
+Read $fluxer_engine compose logs in $opt_dir."
 fi
 fluxer_ready_origin=$(fluxer_public_origin)
 if [ -z "$fluxer_ready_origin" ]; then

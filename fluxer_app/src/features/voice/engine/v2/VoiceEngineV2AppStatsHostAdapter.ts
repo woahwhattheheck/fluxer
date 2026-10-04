@@ -17,6 +17,7 @@ import {
 	type VoiceStatsSnapshot,
 } from '@app/features/voice/engine/VoiceStatsStateMachine';
 import {asVoiceConnectionQuality, VoiceConnectionQuality} from '@app/features/voice/engine/VoiceTrackSource';
+import {assertFiniteNumber, assertNonNullObject} from '@app/features/voice/engine/v2/VoiceEngineV2AppAdapterAssertions';
 import {
 	classifyVideoDecoderAcceleration,
 	classifyVideoEncoderAcceleration,
@@ -30,7 +31,6 @@ import type {
 	VoiceEngineV2TrackKind,
 } from '@fluxer/voice_engine_v2';
 import type {Room} from 'livekit-client';
-import {assertFiniteNumber, assertNonNullObject} from './VoiceEngineV2AppAdapterAssertions';
 
 const logger = new Logger('VoiceEngineV2AppStatsHostAdapter');
 
@@ -59,11 +59,15 @@ export interface PerTrackStats {
 	trackIdentifier?: string;
 	mediaSourceId?: string;
 	codec?: string;
+	codecSdpFmtpLine?: string;
 	payloadType?: number;
 	bitrateKbps: number;
 	bitrateWindowMs?: number;
 	packetsLost?: number;
 	packetsLossPercent?: number;
+	packetsReceived?: number;
+	bytesReceived?: number;
+	framesReceived?: number;
 	jitterMs?: number;
 	framesPerSecond?: number;
 	sourceFramesPerSecond?: number;
@@ -83,7 +87,6 @@ export interface PerTrackStats {
 	maxPushLatencyMs?: number;
 	adaptiveSendTier?: string;
 	adaptiveSendReason?: string;
-	sourceFrames?: number;
 	framesEncoded?: number;
 	framesDecoded?: number;
 	framesDropped?: number;
@@ -121,6 +124,9 @@ export interface TransportInfo {
 	candidatePairState?: string;
 	localCandidateType?: string;
 	localProtocol?: string;
+	localRelayProtocol?: string;
+	localCandidateUrlHost?: string;
+	peerConnectionMode?: string;
 	localNetworkType?: string;
 	remoteCandidateType?: string;
 	remoteProtocol?: string;
@@ -156,12 +162,13 @@ type RoomWithEngine = Room & {
 		pcManager?: {
 			publisher?: StatsSource;
 			subscriber?: StatsSource;
+			mode?: string;
 		};
 	};
 };
 
 interface StatsSource {
-	getStats(): Promise<StatsReportMap>;
+	getStats(): Promise<StatsReportMap | undefined>;
 	getTransceivers?(): ReadonlyArray<StatsTransceiver>;
 }
 
@@ -191,6 +198,7 @@ interface RTCStatsEntry {
 	availableIncomingBitrate?: number;
 	codecId?: string;
 	mimeType?: string;
+	sdpFmtpLine?: string;
 	payloadType?: number;
 	ssrc?: number;
 	rid?: string;
@@ -205,6 +213,7 @@ interface RTCStatsEntry {
 	width?: number;
 	height?: number;
 	frames?: number;
+	framesReceived?: number;
 	framesEncoded?: number;
 	framesDecoded?: number;
 	framesDropped?: number;
@@ -223,6 +232,8 @@ interface RTCStatsEntry {
 	remoteCandidateId?: string;
 	candidateType?: string;
 	protocol?: string;
+	relayProtocol?: string;
+	url?: string;
 	networkType?: string;
 	nominated?: boolean;
 	selected?: boolean;
@@ -374,6 +385,9 @@ function buildInboundTrackExtras(
 	decoderAcceleration: VideoAccelerationStatus | undefined,
 ): Partial<PerTrackStats> {
 	return {
+		packetsReceived: report.packetsReceived,
+		bytesReceived: report.bytesReceived,
+		framesReceived: report.framesReceived,
 		keyFramesDecoded: report.keyFramesDecoded,
 		decoderImplementation: report.decoderImplementation,
 		powerEfficientDecoder: report.powerEfficientDecoder,
@@ -428,6 +442,7 @@ function buildPerTrackStat(args: {
 			(isOutbound && report.mid ? midToSenderTrackId.get(report.mid) : undefined),
 		mediaSourceId: report.mediaSourceId,
 		codec: codec?.mimeType,
+		codecSdpFmtpLine: codec?.sdpFmtpLine,
 		payloadType: codec?.payloadType,
 		bitrateKbps: Math.round(bitrate.bitrateKbps),
 		bitrateWindowMs: bitrate.windowMs,
@@ -440,7 +455,7 @@ function buildPerTrackStat(args: {
 		frameHeight: report.frameHeight,
 		sourceFrameWidth: mediaSource?.frameWidth ?? mediaSource?.width,
 		sourceFrameHeight: mediaSource?.frameHeight ?? mediaSource?.height,
-		sourceFrames: mediaSource?.frames,
+		framesCaptured: mediaSource?.frames,
 		framesEncoded: report.framesEncoded,
 		framesDecoded: report.framesDecoded,
 		framesDropped: report.framesDropped,
@@ -466,10 +481,20 @@ function buildPerTrackStat(args: {
 	};
 }
 
+function getCandidateUrlHost(url: string | undefined): string | undefined {
+	if (!url) return undefined;
+	const schemeIndex = url.indexOf(':');
+	const authority = (schemeIndex === -1 ? url : url.slice(schemeIndex + 1)).split('?')[0];
+	const portIndex = authority.lastIndexOf(':');
+	const host = portIndex > 0 ? authority.slice(0, portIndex) : authority;
+	return host || undefined;
+}
+
 function buildTransportInfo(
 	activePair: RTCStatsEntry | null,
 	transportReport: RTCStatsEntry | null,
 	reportsById: Map<string, RTCStatsEntry>,
+	peerConnectionMode: string | undefined,
 ): TransportInfo | null {
 	if (!activePair && !transportReport) return null;
 	const local = activePair?.localCandidateId ? reportsById.get(activePair.localCandidateId) : undefined;
@@ -478,6 +503,9 @@ function buildTransportInfo(
 		candidatePairState: activePair?.state,
 		localCandidateType: local?.candidateType,
 		localProtocol: local?.protocol,
+		localRelayProtocol: local?.relayProtocol,
+		localCandidateUrlHost: getCandidateUrlHost(local?.url),
+		peerConnectionMode,
 		localNetworkType: local?.networkType,
 		remoteCandidateType: remote?.candidateType,
 		remoteProtocol: remote?.protocol,
@@ -503,12 +531,14 @@ async function collectFromStatsSource(
 	now: number,
 	rtpCounters: Map<string, VoiceStatsRtpCounter>,
 	activeCounterIds: Set<string>,
+	peerConnectionMode?: string,
 ): Promise<{
 	tracks: Array<PerTrackStats>;
 	rtt: number;
 	transport: TransportInfo | null;
 }> {
 	const reports = await source.getStats();
+	if (!reports) return {tracks: [], rtt: 0, transport: null};
 	const midToSenderTrackId = new Map<string, string>();
 	for (const transceiver of source.getTransceivers?.() ?? []) {
 		const senderTrackId = transceiver.sender?.track?.id;
@@ -548,7 +578,7 @@ async function collectFromStatsSource(
 		const selectedPair = reportsById.get(transportReport.selectedCandidatePairId);
 		if (selectedPair?.type === 'candidate-pair') activePair = selectedPair;
 	}
-	const transport = buildTransportInfo(activePair, transportReport, reportsById);
+	const transport = buildTransportInfo(activePair, transportReport, reportsById, peerConnectionMode);
 	return {tracks, rtt, transport};
 }
 
@@ -591,6 +621,7 @@ function toVoiceEngineV2OutboundStats(track: PerTrackStats): VoiceEngineV2Outbou
 		...(track.framesDropped !== undefined ? {framesDropped: track.framesDropped} : {}),
 		...(track.framesCoalesced !== undefined ? {framesCoalesced: track.framesCoalesced} : {}),
 		...(track.framesCaptured !== undefined ? {framesCaptured: track.framesCaptured} : {}),
+		...(track.sourceFramesPerSecond !== undefined ? {sourceFps: track.sourceFramesPerSecond} : {}),
 		...(track.captureFailures !== undefined ? {captureFailures: track.captureFailures} : {}),
 		...(track.maxQueueAgeMs !== undefined ? {maxQueueAgeMs: track.maxQueueAgeMs} : {}),
 		...(track.maxPushLatencyMs !== undefined ? {maxPushLatencyMs: track.maxPushLatencyMs} : {}),
@@ -866,6 +897,7 @@ export class VoiceEngineV2AppStatsHostAdapter extends Store {
 		if (!engine?.pcManager) return;
 		const publisher = engine.pcManager.publisher;
 		const subscriber = engine.pcManager.subscriber;
+		const peerConnectionMode = engine.pcManager.mode;
 		if (!publisher && !subscriber) return;
 		const now = this.now();
 		const tracks: Array<PerTrackStats> = [];
@@ -875,13 +907,27 @@ export class VoiceEngineV2AppStatsHostAdapter extends Store {
 		let publisherTransport: TransportInfo | null = null;
 		let subscriberTransport: TransportInfo | null = null;
 		if (publisher) {
-			const result = await collectFromStatsSource(publisher, 'publisher', now, rtpCounters, activeCounterIds);
+			const result = await collectFromStatsSource(
+				publisher,
+				'publisher',
+				now,
+				rtpCounters,
+				activeCounterIds,
+				peerConnectionMode,
+			);
 			tracks.push(...result.tracks);
 			if (result.rtt > rtt) rtt = result.rtt;
 			publisherTransport = result.transport;
 		}
 		if (subscriber) {
-			const result = await collectFromStatsSource(subscriber, 'subscriber', now, rtpCounters, activeCounterIds);
+			const result = await collectFromStatsSource(
+				subscriber,
+				'subscriber',
+				now,
+				rtpCounters,
+				activeCounterIds,
+				peerConnectionMode,
+			);
 			tracks.push(...result.tracks);
 			if (result.rtt > rtt) rtt = result.rtt;
 			subscriberTransport = result.transport;

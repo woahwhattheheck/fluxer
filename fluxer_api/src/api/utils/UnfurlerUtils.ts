@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {createHash} from 'node:crypto';
+import {stripOwnAttachmentSignature} from '@app/api/attachment/AttachmentUrls';
+import {Config} from '@app/api/Config';
+import {Logger} from '@app/api/Logger';
+import * as InviteUtils from '@app/api/utils/InviteUtils';
 import {URL_REGEX} from '@fluxer/constants/src/Core';
 import * as idna from 'idna-uts46-hx';
-import {Config} from '../Config';
-import {Logger} from '../Logger';
-import * as InviteUtils from './InviteUtils';
 
 const MARKETING_PATH_PREFIXES = ['/channels/', '/theme/'];
 
@@ -103,9 +104,10 @@ export function extractURLs(inputText: string) {
 		if (isFluxerAppExcludedURL(url)) continue;
 		const encoded = idnaEncodeURL(url);
 		if (!encoded) continue;
-		if (!seen.has(encoded)) {
-			seen.add(encoded);
-			result.push(encoded);
+		const canonical = stripOwnAttachmentSignature(encoded);
+		if (!seen.has(canonical)) {
+			seen.add(canonical);
+			result.push(canonical);
 			if (result.length >= 5) break;
 		}
 	}
