@@ -8,13 +8,18 @@ export const ChannelTypes = {
 	GUILD_VOICE: 2,
 	GROUP_DM: 3,
 	GUILD_CATEGORY: 4,
+	GUILD_PUBLIC_THREAD: 11,
 	GUILD_LINK: 998,
 	DM_PERSONAL_NOTES: 999,
 } as const;
 
 export type ChannelType = ValueOf<typeof ChannelTypes>;
 
-export const GUILD_TEXT_BASED_CHANNEL_TYPES = new Set<number>([ChannelTypes.GUILD_TEXT, ChannelTypes.GUILD_VOICE]);
+export const GUILD_TEXT_BASED_CHANNEL_TYPES = new Set<number>([
+	ChannelTypes.GUILD_TEXT,
+	ChannelTypes.GUILD_VOICE,
+	ChannelTypes.GUILD_PUBLIC_THREAD,
+]);
 export const TEXT_BASED_CHANNEL_TYPES = new Set<number>([
 	...GUILD_TEXT_BASED_CHANNEL_TYPES,
 	ChannelTypes.DM,
@@ -168,6 +173,8 @@ export const Permissions = {
 	MANAGE_ROLES: 1n << 28n,
 	MANAGE_WEBHOOKS: 1n << 29n,
 	MANAGE_EXPRESSIONS: 1n << 30n,
+	MANAGE_THREADS: 1n << 34n,
+	CREATE_PUBLIC_THREADS: 1n << 35n,
 	USE_EXTERNAL_STICKERS: 1n << 37n,
 	MODERATE_MEMBERS: 1n << 40n,
 	CREATE_EXPRESSIONS: 1n << 43n,
@@ -207,6 +214,8 @@ export const PermissionsDescriptions: Record<keyof typeof Permissions, string> =
 	MANAGE_ROLES: 'Allows management and editing of roles',
 	MANAGE_WEBHOOKS: 'Allows management and editing of webhooks',
 	MANAGE_EXPRESSIONS: 'Allows management of guild expressions',
+	MANAGE_THREADS: 'Allows management of threads',
+	CREATE_PUBLIC_THREADS: 'Allows creation of public threads',
 	USE_EXTERNAL_STICKERS: 'Allows using stickers from other guilds',
 	MODERATE_MEMBERS: 'Allows timing out users',
 	CREATE_EXPRESSIONS: 'Allows creating guild expressions',
@@ -230,6 +239,7 @@ export const DEFAULT_PERMISSIONS =
 	Permissions.SPEAK |
 	Permissions.USE_VAD |
 	Permissions.CHANGE_NICKNAME |
+	Permissions.CREATE_PUBLIC_THREADS |
 	Permissions.USE_EXTERNAL_STICKERS |
 	Permissions.VIEW_CHANNEL_MEMBERS;
 export const ElevatedPermissions =
@@ -242,5 +252,6 @@ export const ElevatedPermissions =
 	Permissions.MANAGE_MESSAGES |
 	Permissions.MANAGE_WEBHOOKS |
 	Permissions.MANAGE_EXPRESSIONS |
+	Permissions.MANAGE_THREADS |
 	Permissions.MODERATE_MEMBERS;
 export const CHANNEL_REINDEX_AFTER_TIMESTAMP = 1779557400;
