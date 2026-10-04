@@ -345,7 +345,9 @@ if (launchConfigurationError) {
 				try {
 					const {startActivityDetection} = await import('@electron/main/ActivityManagerIpc');
 					runStartupPhase('activity-detection', () => {
-						void startActivityDetection();
+						void startActivityDetection().catch((error) => {
+							log.error('[Init] Failed to start activity detection:', error);
+						});
 					});
 				} catch (error) {
 					log.error('[Init] Failed to start activity detection:', error);
