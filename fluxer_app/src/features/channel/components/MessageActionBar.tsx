@@ -239,6 +239,7 @@ interface MessageActionBarCoreProps {
 		canDeleteMessage: boolean;
 		canPinMessage: boolean;
 		canForwardMessage: boolean;
+		canCreateThread: boolean;
 		shouldRenderSuppressEmbeds: boolean;
 	};
 	developerMode: boolean;
@@ -264,8 +265,15 @@ export const MessageActionBarCore: React.FC<MessageActionBarCoreProps> = observe
 		const shouldListenForShift = showShiftExpand && showMessageActionBar && !onlyMoreButton && !keyboardModeEnabled;
 		const shiftPressed = useShiftKey(shouldListenForShift);
 		const showFullActions = shouldListenForShift && shiftPressed;
-		const {canSendMessages, canAddReactions, canEditMessage, canDeleteMessage, canPinMessage, canForwardMessage} =
-			permissions;
+		const {
+			canSendMessages,
+			canAddReactions,
+			canEditMessage,
+			canDeleteMessage,
+			canPinMessage,
+			canForwardMessage,
+			canCreateThread,
+		} = permissions;
 		const showsEditInTail = message.isUserMessage() && !message.messageSnapshots && canEditMessage;
 		const supportsInteractiveActions = useMemo(() => !isClientSystemMessage(message), [message]);
 		const handlers = useMemo(
