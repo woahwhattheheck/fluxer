@@ -199,7 +199,7 @@ export abstract class BaseChannelAuthService {
 		const channelPermissions = await this.gatewayService.getUserPermissions({
 			guildId,
 			userId,
-			channelId: this.parentLookupChannelId(channel) ?? channel.id,
+			channelId: this.permissionLookupChannelId(channel),
 		});
 		const hasPermission = async (permission: bigint): Promise<boolean> => {
 			const allowed = (channelPermissions & permission) === permission;
@@ -242,6 +242,13 @@ export abstract class BaseChannelAuthService {
 			hasPermission,
 			checkPermission,
 		};
+	}
+
+	private permissionLookupChannelId(channel: Channel): ChannelID {
+		if (channel.type === ChannelTypes.GUILD_PUBLIC_THREAD && channel.parentId) {
+			return channel.parentId;
+		}
+		return channel.id;
 	}
 
 	private parentLookupChannelId(channel: Channel): ChannelID | undefined {
