@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {createServer, type Server, type Socket} from 'node:net';
-import {homedir} from 'node:os';
 import path from 'node:path';
 import type {RpcActivity} from '@electron/common/RpcActivityTypes';
 
@@ -30,7 +29,13 @@ export interface RpcServerEvents {
 interface ClientState {
 	socket: Socket;
 	pid: number;
+	handshaken: boolean;
 	buffer: Buffer;
+}
+
+interface ClientActivity {
+	client: ClientState;
+	activity: RpcActivity;
 }
 
 function pipePaths(platform: NodeJS.Platform): Array<string> {
@@ -46,7 +51,11 @@ function pipePaths(platform: NodeJS.Platform): Array<string> {
 }
 
 function encodeMessage(op: number, payload: unknown): Buffer {
-	const body = Buffer.from(JSON.stringify(payload), 'utf8');
+	return encodePayload(op, JSON.stringify(payload));
+}
+
+function encodePayload(op: number, payload: string): Buffer {
+	const body = Buffer.from(payload, 'utf8');
 	const header = Buffer.alloc(8);
 	header.writeUInt32LE(op, 0);
 	header.writeUInt32LE(body.length, 4);
@@ -67,11 +76,19 @@ function tryDecodeMessage(buffer: Buffer, offset: number): ParsedMessage | null 
 	return {op, payload: buffer.toString('utf8', offset + 8, offset + 8 + length), frameLength: 8 + length};
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value != null && !Array.isArray(value);
+}
+
+function isProcessId(value: unknown): value is number {
+	return typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
+}
+
 export class ArRpcServer {
 	private readonly events: RpcServerEvents;
 	private readonly servers = new Set<Server>();
 	private readonly clients = new Set<ClientState>();
-	private readonly activities = new Map<number, RpcActivity>();
+	private readonly activities = new Map<number, ClientActivity>();
 	private started = false;
 
 	constructor(events: RpcServerEvents) {
@@ -98,7 +115,10 @@ export class ArRpcServer {
 
 	async stop(): Promise<void> {
 		this.started = false;
-		for (const client of this.clients) client.socket.destroy();
+		for (const client of [...this.clients]) {
+			this.handleDisconnect(client);
+			client.socket.destroy();
+		}
 		this.clients.clear();
 		this.activities.clear();
 		await Promise.all(
@@ -110,11 +130,11 @@ export class ArRpcServer {
 	}
 
 	currentActivities(): Array<RpcActivity> {
-		return [...this.activities.values()];
+		return [...this.activities.values()].map(({activity}) => activity);
 	}
 
 	private handleConnection(socket: Socket): void {
-		const state: ClientState = {socket, pid: 0, buffer: Buffer.alloc(0)};
+		const state: ClientState = {socket, pid: 0, handshaken: false, buffer: Buffer.alloc(0)};
 		this.clients.add(state);
 		socket.on('data', (chunk: Buffer) => this.handleData(state, chunk));
 		socket.on('close', () => this.handleDisconnect(state));
@@ -124,14 +144,23 @@ export class ArRpcServer {
 	private handleDisconnect(state: ClientState): void {
 		if (!this.clients.has(state)) return;
 		this.clients.delete(state);
-		if (state.pid !== 0 && this.activities.delete(state.pid)) {
+		this.clearActivity(state);
+		state.buffer = Buffer.alloc(0);
+	}
+
+	private clearActivity(state: ClientState): void {
+		// A later connection may have replaced this process's activity.
+		// Only its current owner may remove it or notify ActivityManager.
+		if (this.activities.get(state.pid)?.client === state) {
+			this.activities.delete(state.pid);
 			this.events.onActivity(null, state.pid);
 		}
 	}
 
 	private handleData(state: ClientState, chunk: Buffer): void {
+		if (!this.clients.has(state)) return;
 		state.buffer = Buffer.concat([state.buffer, chunk]);
-		for (;;) {
+		while (this.clients.has(state)) {
 			const decoded = tryDecodeMessage(state.buffer, 0);
 			if (decoded == null) return;
 			state.buffer = state.buffer.subarray(decoded.frameLength);
@@ -140,47 +169,87 @@ export class ArRpcServer {
 	}
 
 	private handleMessage(state: ClientState, op: number, payload: string): void {
+		if (op === OP_CLOSE) {
+			this.handleDisconnect(state);
+			state.socket.destroy();
+			return;
+		}
+		if (op === OP_PING) {
+			state.socket.write(encodePayload(OP_PONG, payload));
+			return;
+		}
 		let parsed: unknown;
 		try {
 			parsed = payload.length === 0 ? {} : JSON.parse(payload);
 		} catch {
-			// ignore malformed frames
+			return;
 		}
-		const data = (parsed ?? {}) as {
-			client_id?: unknown;
-			pid?: unknown;
-			activity?: unknown;
-			args?: {pid?: unknown; activity?: unknown} | null;
-		};
+		if (!isRecord(parsed)) return;
+		const data = parsed;
 		switch (op) {
 			case OP_HANDSHAKE:
-				state.pid = typeof data.pid === 'number' ? data.pid : 0;
-				state.socket.write(encodeMessage(OP_FRAME, {cmd: 'DISPATCH', data: {v: 1, cfg: {}}}));
-				break;
-			case OP_PING:
-				state.socket.write(encodeMessage(OP_PONG, {}));
+				if (state.handshaken) return;
+				if (data.v !== 1 || typeof data.client_id !== 'string' || data.client_id.length === 0) {
+					state.socket.write(encodeMessage(OP_CLOSE, {code: 4000, message: 'Invalid RPC handshake'}));
+					this.handleDisconnect(state);
+					state.socket.destroy();
+					return;
+				}
+				state.handshaken = true;
+				// Legacy minimal clients include pid here; standard clients send it
+				// with SET_ACTIVITY, so no activity is assigned to process zero.
+				state.pid = isProcessId(data.pid) ? data.pid : 0;
+				state.socket.write(encodeMessage(OP_FRAME, {cmd: 'DISPATCH', evt: 'READY', data: {v: 1, config: {}}}));
 				break;
 			case OP_FRAME: {
-				// Discord clients wrap the payload in `args`; bare activity is
-				// accepted too for minimal test clients.
-				const rawActivity = data.args?.activity !== undefined ? data.args.activity : data.activity;
-				const activity = normalizeActivity(rawActivity, state.pid);
-				if (activity == null) {
-					if (this.activities.delete(state.pid)) this.events.onActivity(null, state.pid);
-				} else {
-					this.activities.set(state.pid, activity);
-					this.events.onActivity(activity, state.pid);
+				const bareActivity = data.cmd === undefined && Object.hasOwn(data, 'activity');
+				const cmd = typeof data.cmd === 'string' ? data.cmd : bareActivity ? 'SET_ACTIVITY' : null;
+				if (cmd == null) return;
+				const nonce = typeof data.nonce === 'string' ? data.nonce : null;
+				if (!state.handshaken) {
+					this.replyError(state, cmd, nonce, 4000, 'RPC handshake required');
+					return;
 				}
+				if (cmd !== 'SET_ACTIVITY') {
+					this.replyError(state, cmd, nonce, 4002, 'Unsupported RPC command');
+					return;
+				}
+				const args = data.args === undefined ? data : isRecord(data.args) ? data.args : null;
+				const pid = args?.pid === undefined ? state.pid : args.pid;
+				if (args == null || !isProcessId(pid)) {
+					this.replyError(state, cmd, nonce, 4000, 'SET_ACTIVITY requires a valid process ID');
+					return;
+				}
+				// discord-rpc omits activity to clear; explicit null is also valid.
+				const rawActivity = args.activity === undefined ? null : args.activity;
+				const activity = normalizeActivity(rawActivity, pid);
+				if (rawActivity !== null && activity == null) {
+					this.replyError(state, cmd, nonce, 4000, 'Invalid RPC activity');
+					return;
+				}
+				if (state.pid !== pid) this.clearActivity(state);
+				state.pid = pid;
+				if (activity == null) {
+					this.clearActivity(state);
+				} else {
+					this.activities.set(pid, {client: state, activity});
+					this.events.onActivity(activity, pid);
+				}
+				state.socket.write(encodeMessage(OP_FRAME, {cmd, data: rawActivity, evt: null, nonce}));
 				break;
 			}
 			default:
 				break;
 		}
 	}
+
+	private replyError(state: ClientState, cmd: string, nonce: string | null, code: number, message: string): void {
+		state.socket.write(encodeMessage(OP_FRAME, {cmd, data: {code, message}, evt: 'ERROR', nonce}));
+	}
 }
 
 function normalizeActivity(raw: unknown, pid: number): RpcActivity | null {
-	if (typeof raw !== 'object' || raw == null) return null;
+	if (!isRecord(raw)) return null;
 	const activity = raw as {
 		name?: unknown;
 		type?: unknown;
