@@ -78,6 +78,10 @@ export const ChannelResponse = z.object({
 		.max(MAX_GROUP_DM_OTHER_RECIPIENTS)
 		.optional()
 		.describe('The recipients of the DM channel'),
+	thread_member_ids: z
+		.array(SnowflakeStringType)
+		.optional()
+		.describe('User IDs currently joined to this public thread'),
 	nsfw: z
 		.boolean()
 		.optional()
@@ -157,6 +161,7 @@ export interface Channel {
 	readonly last_pin_timestamp?: string | null;
 	readonly permission_overwrites?: ReadonlyArray<ChannelOverwrite>;
 	readonly recipients?: ReadonlyArray<UserPartial>;
+	readonly thread_member_ids?: ReadonlyArray<string>;
 	readonly nsfw?: boolean;
 	readonly nsfw_override?: boolean | null;
 	readonly content_warning_level?: number;
