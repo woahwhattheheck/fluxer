@@ -38,6 +38,7 @@ import {
 	AddReactionIcon,
 	CopyIdIcon,
 	CopyLinkIcon,
+	CreateChannelIcon,
 	DebugMessageIcon,
 	DeleteIcon,
 	EditMessageIcon,
@@ -85,6 +86,10 @@ const DEBUG_MESSAGE_DESCRIPTOR = msg({
 const FORWARD_DESCRIPTOR = msg({
 	message: 'Forward',
 	comment: 'Tooltip on the forward button in the inline message hover action bar.',
+});
+const START_THREAD_DESCRIPTOR = msg({
+	message: 'Start thread',
+	comment: 'Tooltip on the start-thread button in the inline message hover action bar.',
 });
 
 interface MessageActionBarButtonProps {
