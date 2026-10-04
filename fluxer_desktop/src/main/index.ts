@@ -343,6 +343,14 @@ if (launchConfigurationError) {
 					log.error('[Init] Failed to register IPC handlers:', error);
 				}
 				try {
+					const {startActivityDetection} = await import('@electron/main/ActivityManagerIpc');
+					runStartupPhase('activity-detection', () => {
+						void startActivityDetection();
+					});
+				} catch (error) {
+					log.error('[Init] Failed to start activity detection:', error);
+				}
+				try {
 					runStartupPhase('autostart-handlers', registerAutostartHandlers);
 				} catch (error) {
 					log.error('[Init] Failed to register autostart handlers:', error);

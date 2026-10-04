@@ -16,6 +16,7 @@ import type {GuildMember} from '@app/features/member/models/GuildMember';
 import GuildMembers from '@app/features/member/state/GuildMembers';
 import Permission from '@app/features/permissions/state/Permission';
 import {Logger} from '@app/features/platform/utils/AppLogger';
+import {UserActivityDisplay} from '@app/features/presence/components/UserActivityDisplay';
 import {usePresenceCustomStatus} from '@app/features/presence/hooks/usePresenceCustomStatus';
 import MemberPresenceSubscription from '@app/features/presence/state/MemberPresenceSubscription';
 import Relationships from '@app/features/relationship/state/Relationships';
@@ -348,6 +349,7 @@ export const UserProfilePopout: React.FC<UserProfilePopoutProps> = observer(
 									/>
 								</div>
 							)}
+							{!isWebhook && <UserActivityDisplay userId={user.id} />}
 							{!isWebhook && (
 								<VoiceActivitySection
 									userId={user.id}

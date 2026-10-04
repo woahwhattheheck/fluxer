@@ -3,6 +3,7 @@
 import Accessibility from '@app/features/accessibility/state/Accessibility';
 import {isClientBooting} from '@app/features/app/state/ClientReadiness';
 import Authentication from '@app/features/auth/state/Authentication';
+import {initializeDesktopActivityBridge} from '@app/features/platform/utils/DesktopActivityBridge';
 import {initializeDesktopTrayBridge} from '@app/features/platform/utils/DesktopTrayBridge';
 import ThemeLibrary from '@app/features/theme/state/ThemeLibrary';
 import {broadcastThemeStudioMessage} from '@app/features/theme_studio/state/ThemeStudioBroadcast';
@@ -34,12 +35,14 @@ export function useDesktopElectronBridges(): void {
 			});
 		});
 		const disposeTrayBridge = initializeDesktopTrayBridge();
+		const disposeActivityBridge = initializeDesktopActivityBridge();
 		return () => {
 			unsubZoomIn?.();
 			unsubZoomOut?.();
 			unsubZoomReset?.();
 			unsubOpenSettings?.();
 			disposeTrayBridge?.();
+			disposeActivityBridge?.();
 			disposeLinkedFileSync();
 		};
 	}, []);

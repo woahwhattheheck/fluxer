@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type {DesktopActivityPayload} from '@app/features/platform/types/Electron';
 import type {VoiceEngineV2BridgeHardwareEncoderApi} from '@fluxer/voice_engine_v2/bridge';
 import type {AuthenticationResponseJSON, RegistrationResponseJSON} from '@simplewebauthn/browser';
 
@@ -498,6 +499,8 @@ export interface ElectronAPI {
 	desktopTroubleshootingReload?(): Promise<void>;
 	desktopTroubleshootingResetAppData?(options?: {confirm?: boolean}): Promise<void>;
 	getStreamerModeCaptureAppStatus?(): Promise<StreamerModeCaptureAppStatus>;
+	getCurrentActivities?(): Promise<Array<DesktopActivityPayload>>;
+	onActivitiesUpdated?(listener: (activities: Array<DesktopActivityPayload>) => void): () => void;
 	popupHelpMenu?(): Promise<void>;
 	getInitialDeepLink(): Promise<string | null>;
 	onDeepLink(callback: (url: string) => void): () => void;

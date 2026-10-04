@@ -8,6 +8,7 @@ import type {CustomStatus, GatewayCustomStatusPayload} from '@app/features/user/
 import {customStatusToKey, normalizeCustomStatus, toGatewayCustomStatus} from '@app/features/user/state/CustomStatus';
 import type {StatusType} from '@fluxer/constants/src/StatusConstants';
 import {normalizeStatus, StatusTypes} from '@fluxer/constants/src/StatusConstants';
+import type {ActivityResponse} from '@fluxer/schema/src/domains/user/ActivitySchemas';
 import {makeAutoObservable, reaction} from 'mobx';
 
 type Presence = Readonly<{
@@ -16,6 +17,7 @@ type Presence = Readonly<{
 	afk: boolean;
 	mobile: boolean;
 	custom_status: GatewayCustomStatusPayload | null;
+	activities: ReadonlyArray<ActivityResponse> | null;
 }>;
 
 export const ACCOUNT_PRESENCE_INTENT_MAX_AGE_MS = 60 * 1000;
@@ -42,6 +44,7 @@ class LocalPresence {
 	afk: boolean = false;
 	mobile: boolean = false;
 	customStatus: CustomStatus | null = null;
+	activities: ReadonlyArray<ActivityResponse> | null = null;
 	private restoredIntent: AccountPresenceIntent | null = null;
 
 	constructor() {
@@ -52,6 +55,11 @@ class LocalPresence {
 				() => this.updatePresence(),
 			);
 		});
+	}
+
+	setActivities(activities: ReadonlyArray<ActivityResponse> | null): void {
+		this.activities = activities && activities.length > 0 ? activities : null;
+		this.updatePresence();
 	}
 
 	updatePresence(): void {
@@ -93,6 +101,7 @@ class LocalPresence {
 			afk: this.afk,
 			mobile: this.mobile,
 			custom_status: toGatewayCustomStatus(this.customStatus),
+			activities: this.activities,
 		};
 	}
 
@@ -135,7 +144,7 @@ class LocalPresence {
 		const hydrated = userSettings?.isHydrated() ? '1' : '0';
 		const afk = this.afk ? '1' : '0';
 		const mobile = this.mobile ? '1' : '0';
-		return `hydrated:${hydrated}|${this.status}|${customStatusToKey(this.customStatus)}|afk:${afk}|mobile:${mobile}`;
+		return `hydrated:${hydrated}|${this.status}|${customStatusToKey(this.customStatus)}|afk:${afk}|mobile:${mobile}|activities:${JSON.stringify(this.activities ?? [])}`;
 	}
 
 	private computeAfk(idleSince: number, isMobile: boolean, settings: LocalPresenceUserSettings | null): boolean {

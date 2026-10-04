@@ -65,6 +65,7 @@ import type {
 	VirtmicRoutingGraphResult,
 	VirtmicSystemLinkOptions,
 } from '@electron/common/Types';
+import type {DesktopActivity} from '@electron/common/RpcActivityTypes';
 import {
 	VOICE_ENGINE_V2_HARDWARE_ENCODER_IPC_CHANNEL,
 	type VoiceEngineV2BridgeHardwareEncoderApi,
@@ -505,6 +506,12 @@ const api: ElectronAPI = {
 	shouldPlayNotificationSound: (): Promise<boolean> => ipcRenderer.invoke('notification-sound-allowed'),
 	getStreamerModeCaptureAppStatus: (): Promise<StreamerModeCaptureAppStatus> =>
 		ipcRenderer.invoke('streamer-mode:get-capture-app-status'),
+	getCurrentActivities: (): Promise<DesktopActivity[]> => ipcRenderer.invoke('activity:get-current'),
+	onActivitiesUpdated: (listener: (activities: DesktopActivity[]) => void): (() => void) => {
+		const handler = (_event: unknown, activities: DesktopActivity[]): void => listener(activities);
+		ipcRenderer.on('activity:updated', handler);
+		return () => ipcRenderer.removeListener('activity:updated', handler);
+	},
 	closeNotification: (id: string): void => {
 		ipcRenderer.send('close-notification', id);
 	},

@@ -279,6 +279,23 @@ export interface StreamerModeCaptureProcess {
 	pid?: number;
 }
 
+/** Activity pushed by the desktop activity manager (detection or RPC). */
+export interface DesktopActivityPayload {
+	name: string;
+	type: number;
+	application_id?: string | null;
+	state?: string | null;
+	details?: string | null;
+	icon?: string | null;
+	assets?: {
+		large_image?: string | null;
+		large_text?: string | null;
+		small_image?: string | null;
+		small_text?: string | null;
+	} | null;
+	timestamps?: {start?: number | null; end?: number | null} | null;
+}
+
 export interface StreamerModeCaptureAppStatus {
 	detected: boolean;
 	processes: Array<StreamerModeCaptureProcess>;
@@ -375,6 +392,8 @@ export interface ElectronAPI {
 	showNotification: (options: NotificationOptions) => Promise<NotificationResult>;
 	shouldPlayNotificationSound?: () => Promise<boolean>;
 	getStreamerModeCaptureAppStatus?: () => Promise<StreamerModeCaptureAppStatus>;
+	getCurrentActivities?: () => Promise<Array<DesktopActivityPayload>>;
+	onActivitiesUpdated?: (listener: (activities: Array<DesktopActivityPayload>) => void) => () => void;
 	closeNotification: (id: string) => void;
 	closeNotifications: (ids: Array<string>) => void;
 	onNotificationClick: (callback: (id: string, url?: string) => void) => () => void;
