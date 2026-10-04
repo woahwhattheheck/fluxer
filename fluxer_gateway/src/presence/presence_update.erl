@@ -44,8 +44,11 @@ maybe_handle_custom_status(Request, State) ->
 -spec maybe_handle_activities(map(), state()) -> {map(), state()}.
 maybe_handle_activities(Request, State) ->
     case maps:find(activities, Request) of
+        {ok, null} ->
+            {Request#{activities => null}, State#{activities := null}};
         {ok, Activities} when is_list(Activities) ->
-            {Request, State#{activities := Activities}};
+            Normalized = normalize_activities(Activities),
+            {Request#{activities => Normalized}, State#{activities := Normalized}};
         {ok, _} ->
             {Request, State};
         error ->
@@ -446,6 +449,20 @@ maybe_handle_activities_non_list_is_noop_test() ->
     {Request, NewState} = maybe_handle_activities(#{<<"activities">> => 42}, State),
     ?assertEqual(42, maps:get(<<"activities">>, Request)),
     ?assertEqual(State, NewState).
+
+maybe_handle_activities_atom_key_normalizes_test() ->
+    State = #{activities => null},
+    Valid = #{<<"name">> => <<"Game">>, <<"type">> => 0},
+    Invalid = #{<<"name">> => <<"Bad">>, <<"type">> => 6},
+    {Request, NewState} = maybe_handle_activities(#{activities => [Invalid, Valid]}, State),
+    ?assertEqual([Valid], maps:get(activities, Request)),
+    ?assertEqual([Valid], maps:get(activities, NewState)).
+
+maybe_handle_activities_atom_key_clear_test() ->
+    State = #{activities => [#{<<"name">> => <<"Game">>, <<"type">> => 0}]},
+    {Request, NewState} = maybe_handle_activities(#{activities => null}, State),
+    ?assertEqual(null, maps:get(activities, Request)),
+    ?assertEqual(null, maps:get(activities, NewState)).
 
 is_push_eligible_test() ->
     ?assertEqual(true, is_push_eligible(#{})),
