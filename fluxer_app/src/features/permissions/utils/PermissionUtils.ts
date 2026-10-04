@@ -252,6 +252,8 @@ function generateGuildGeneralPermissionSpec(i18n: I18n): PermissionSpec {
 			makePermissionEntry(i18n, Permissions.MANAGE_GUILD),
 			makePermissionEntry(i18n, Permissions.MANAGE_ROLES),
 			makePermissionEntry(i18n, Permissions.MANAGE_CHANNELS),
+			makePermissionEntry(i18n, Permissions.CREATE_EVENTS),
+			makePermissionEntry(i18n, Permissions.MANAGE_EVENTS),
 			makePermissionEntry(i18n, Permissions.KICK_MEMBERS),
 			makePermissionEntry(i18n, Permissions.BAN_MEMBERS),
 			makePermissionEntry(i18n, Permissions.CREATE_INSTANT_INVITE),
