@@ -50,6 +50,12 @@ function parseCsvRows(stdout: string): Array<Array<string>> {
 	return rows;
 }
 
+function parseProcessId(value: string | undefined): number | undefined {
+	if (value == null || !/^\d+$/.test(value.trim())) return undefined;
+	const pid = Number(value);
+	return Number.isSafeInteger(pid) && pid > 0 ? pid : undefined;
+}
+
 function parseWindowsWmicCsv(stdout: string): Array<DetectedProcess> {
 	const processes: Array<DetectedProcess> = [];
 	const [headerRow, ...rows] = parseCsvRows(stdout);
@@ -58,14 +64,17 @@ function parseWindowsWmicCsv(stdout: string): Array<DetectedProcess> {
 	const nameIndex = header.indexOf('Name');
 	const commandLineIndex = header.indexOf('CommandLine');
 	const executablePathIndex = header.indexOf('ExecutablePath');
+	const processIdIndex = header.indexOf('ProcessId');
 	if (nameIndex === -1) return processes;
 	for (const cells of rows) {
 		const name = cells[nameIndex]?.trim();
 		if (!name) continue;
 		const commandLine = commandLineIndex >= 0 ? cells[commandLineIndex]?.trim() : undefined;
 		const executablePath = executablePathIndex >= 0 ? cells[executablePathIndex]?.trim() : undefined;
+		const pid = parseProcessId(processIdIndex >= 0 ? cells[processIdIndex] : undefined);
 		processes.push({
 			name: name.toLowerCase(),
+			...(pid === undefined ? {} : {pid}),
 			...(commandLine ? {commandLine: commandLine.toLowerCase()} : {}),
 			...(executablePath ? {executablePath} : {}),
 		});
@@ -96,12 +105,14 @@ function parsePosixPs(stdout: string): Array<DetectedProcess> {
 	for (const line of stdout.split(/\r?\n/)) {
 		const match = line.match(/^\s*(\d+)\s+(\S+)\s*(.*)$/);
 		if (!match) continue;
-		const [, , command, args] = match;
+		const [, processId, command, args] = match;
 		if (!command) continue;
+		const pid = parseProcessId(processId);
 		const name = command.includes('/') ? command.slice(command.lastIndexOf('/') + 1) : command;
 		const commandLine = args?.trim() ? `${command} ${args.trim()}` : command;
 		processes.push({
 			name: name.toLowerCase(),
+			...(pid === undefined ? {} : {pid}),
 			commandLine: commandLine.toLowerCase(),
 			...(command.includes('/') ? {executablePath: command} : {}),
 		});

@@ -15,6 +15,8 @@ export type ActivityTypeValue = (typeof ActivityTypes)[keyof typeof ActivityType
 
 /** A process observation handed to the detectables matcher. */
 export interface DetectedProcess {
+	/** Actual process ID, when present in the operating-system observation. */
+	readonly pid?: number;
 	/** Lowercased executable name, e.g. `minecraft.windows.exe`. */
 	readonly name: string;
 	/** Executable path when available, used only for path-suffix detection rules. */
@@ -44,6 +46,8 @@ export interface DetectedApplicationActivity {
 	readonly name: string;
 	readonly type: ActivityTypeValue;
 	readonly icon?: string;
+	/** Local merge metadata; removed before activities leave ActivityManager. */
+	readonly processIds?: Array<number>;
 }
 
 /** Activity pushed by a game via the Discord-compatible local IPC. */

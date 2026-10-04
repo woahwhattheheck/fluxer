@@ -78,16 +78,23 @@ export function matchDetectableApplications(
 ): Array<DetectedApplicationActivity> {
 	const matched = new Map<string, DetectedApplicationActivity>();
 	for (const application of applications) {
+		const processIds = new Set(matched.get(application.name)?.processIds ?? []);
+		let hasMatch = false;
 		for (const process of processes) {
 			if (!applicationMatches(application, process, platform)) continue;
-			matched.set(application.name, {
-				kind: 'detected',
-				name: application.name,
-				type: 0,
-				...(application.icon ? {icon: application.icon} : {}),
-			});
-			break;
+			hasMatch = true;
+			if (typeof process.pid === 'number' && Number.isSafeInteger(process.pid) && process.pid > 0) {
+				processIds.add(process.pid);
+			}
 		}
+		if (!hasMatch) continue;
+		matched.set(application.name, {
+			kind: 'detected',
+			name: application.name,
+			type: 0,
+			...(application.icon ? {icon: application.icon} : {}),
+			...(processIds.size > 0 ? {processIds: [...processIds]} : {}),
+		});
 	}
 	return [...matched.values()];
 }

@@ -154,6 +154,41 @@ describe("matchDetectableApplications", () => {
     assert.equal(matchDetectableApplications(DETECTABLES, [], "win32").length, 0);
   });
 });
+
+describe("detected process identities", () => {
+  test("all distinct PIDs survive a multi-process match while the application stays deduplicated", () => {
+    const matches = matchDetectableApplications(DETECTABLES, [
+      { name: "minecraft.windows.exe", pid: 11 },
+      { name: "minecraft.windows.exe", pid: 12 },
+      { name: "minecraft.windows.exe", pid: 11 },
+      { name: "osu!.exe", pid: 22 }
+    ], "win32");
+    assert.equal(matches.length, 2);
+    assert.deepEqual(matches[0].processIds, [11, 12]);
+    assert.deepEqual(matches[1].processIds, [22]);
+  });
+  test("later matching catalogue definitions retain prior PIDs and override only application metadata", () => {
+    const applications = [
+      { name: "One Game", icon: "old.png", executables: [{ name: "old.exe", os: "win32" }] },
+      { name: "One Game", icon: "new.png", executables: [{ name: "new.exe", os: "win32" }] }
+    ];
+    const matches = matchDetectableApplications(applications, [
+      { name: "old.exe", pid: 11 },
+      { name: "new.exe", pid: 12 }
+    ], "win32");
+    assert.deepEqual(matches, [{
+      kind: "detected", name: "One Game", type: 0, icon: "new.png", processIds: [11, 12]
+    }]);
+  });
+  test("PID-less and invalid-PID matches preserve their legacy activity shape", () => {
+    const invalid = [undefined, 0, -1, 1.5, "12", Number.MAX_SAFE_INTEGER + 1];
+    const matches = matchDetectableApplications(DETECTABLES, invalid.map((pid) => ({
+      name: "osu!.exe", ...(pid === undefined ? {} : { pid })
+    })), "win32");
+    assert.deepEqual(matches, [{ kind: "detected", name: "osu!", type: 0, icon: "osu.png" }]);
+  });
+});
+
 describe("parseDetectables", () => {
   test("parses the real schema-shaped payload", () => {
     const parsed = parseDetectables(DETECTABLES);
