@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { connect } from "node:net";
@@ -43,6 +44,37 @@ function pipeName(index) {
   return process.platform === "win32" ? `\\\\.\\pipe\\discord-ipc-${index}` : `${process.env.XDG_RUNTIME_DIR ?? "/tmp"}/discord-ipc-${index}`;
 }
 describe("ArRpcServer protocol", () => {
+  for (const delivery of ["coalesced", "fragmented"]) {
+    test(`Unicode activity preserves subsequent frames (${delivery})`, () => {
+      const events = [];
+      const replies = [];
+      const socket = new EventEmitter();
+      socket.write = (data) => { replies.push(data); return true; };
+      const server = new ArRpcServer({
+        onActivity: (activity, pid) => events.push({ activity, pid })
+      });
+      server.handleConnection(socket);
+      const unicode = { name: "音楽 🎮", type: 0, details: "Playing 🎮 音楽" };
+      const packet = Buffer.concat([
+        frame(0, { v: 1, client_id: "123", pid: 4242 }),
+        frame(1, { cmd: "SET_ACTIVITY", args: { pid: 4242, activity: unicode } }),
+        frame(1, { cmd: "SET_ACTIVITY", args: { pid: 4242, activity: { name: "Following", type: 0 } } }),
+        frame(3, {})
+      ]);
+      if (delivery === "coalesced") {
+        socket.emit("data", packet);
+      } else {
+        // Cross every header/payload boundary, including inside UTF-8 characters.
+        for (const byte of packet) socket.emit("data", Buffer.of(byte));
+      }
+      assert.deepEqual(events.map(({ activity }) => activity.name), [unicode.name, "Following"]);
+      assert.equal(events[0].activity.details, unicode.details);
+      assert.deepEqual(replies.map((reply) => reply.readUInt32LE(0)), [1, 4]);
+      assert.equal(server.currentActivities()[0].name, "Following");
+      socket.emit("close");
+      assert.equal(server.currentActivities().length, 0);
+    });
+  }
   test("handshake, SET_ACTIVITY, clear, and ping over a real pipe", async () => {
     const events = [];
     const server = new ArRpcServer({
@@ -152,7 +184,7 @@ describe("rpc frame codec", () => {
     const { encodeMessage, tryDecodeMessage } = __rpcInternals;
     const encoded = encodeMessage(1, { cmd: "PING" });
     const decoded = tryDecodeMessage(Buffer.concat([encoded, Buffer.from("trailing")]), 0);
-    assert.deepEqual(decoded, { op: 1, payload: '{"cmd":"PING"}' });
+    assert.deepEqual(decoded, { op: 1, payload: '{"cmd":"PING"}', frameLength: encoded.length });
   });
   test("decode returns null for partial buffers", () => {
     const { tryDecodeMessage } = __rpcInternals;

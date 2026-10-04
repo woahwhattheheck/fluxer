@@ -56,6 +56,7 @@ function encodeMessage(op: number, payload: unknown): Buffer {
 interface ParsedMessage {
 	op: number;
 	payload: string;
+	frameLength: number;
 }
 
 function tryDecodeMessage(buffer: Buffer, offset: number): ParsedMessage | null {
@@ -63,7 +64,7 @@ function tryDecodeMessage(buffer: Buffer, offset: number): ParsedMessage | null 
 	const op = buffer.readUInt32LE(offset);
 	const length = buffer.readUInt32LE(offset + 4);
 	if (buffer.length - offset - 8 < length) return null;
-	return {op, payload: buffer.toString('utf8', offset + 8, offset + 8 + length)};
+	return {op, payload: buffer.toString('utf8', offset + 8, offset + 8 + length), frameLength: 8 + length};
 }
 
 export class ArRpcServer {
@@ -133,7 +134,7 @@ export class ArRpcServer {
 		for (;;) {
 			const decoded = tryDecodeMessage(state.buffer, 0);
 			if (decoded == null) return;
-			state.buffer = state.buffer.subarray(8 + decoded.payload.length);
+			state.buffer = state.buffer.subarray(decoded.frameLength);
 			this.handleMessage(state, decoded.op, decoded.payload);
 		}
 	}
