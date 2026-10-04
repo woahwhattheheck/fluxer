@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type {EmojiID, GuildID, StickerID} from '@app/api/BrandedTypes';
-import type {GuildEmojiRow, GuildStickerRow} from '@app/api/database/types/GuildTypes';
+import type {EmojiID, EventID, GuildID, StickerID, UserID} from '@app/api/BrandedTypes';
+import type {GuildEmojiRow, GuildEventAttendeeRow, GuildEventRow, GuildStickerRow} from '@app/api/database/types/GuildTypes';
 import type {GuildEmoji} from '@app/api/models/GuildEmoji';
+import type {GuildEvent} from '@app/api/models/GuildEvent';
 import type {GuildSticker} from '@app/api/models/GuildSticker';
 
 export abstract class IGuildContentRepository {
@@ -29,4 +30,20 @@ export abstract class IGuildContentRepository {
 	abstract upsertSticker(data: GuildStickerRow): Promise<GuildSticker>;
 
 	abstract deleteSticker(guildId: GuildID, stickerId: StickerID): Promise<void>;
+
+	abstract getEvent(eventId: EventID, guildId: GuildID): Promise<GuildEvent | null>;
+
+	abstract listEvents(guildId: GuildID): Promise<Array<GuildEvent>>;
+
+	abstract upsertEvent(data: GuildEventRow, oldData?: GuildEventRow | null): Promise<GuildEvent>;
+
+	abstract deleteEvent(guildId: GuildID, eventId: EventID): Promise<void>;
+
+	abstract listEventAttendees(eventId: EventID): Promise<Array<GuildEventAttendeeRow>>;
+
+	abstract listUserEventAttendances(userId: UserID): Promise<Array<GuildEventAttendeeRow>>;
+
+	abstract upsertEventAttendee(data: GuildEventAttendeeRow): Promise<void>;
+
+	abstract deleteEventAttendee(eventId: EventID, userId: UserID): Promise<void>;
 }
