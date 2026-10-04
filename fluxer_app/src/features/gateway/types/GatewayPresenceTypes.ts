@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type {GatewayCustomStatusPayload} from '@app/features/user/state/CustomStatus';
+import type {ActivityResponse} from '@fluxer/schema/src/domains/user/ActivitySchemas';
 import type {UserPartial} from '@fluxer/schema/src/domains/user/UserResponseSchemas';
 
 export interface PresenceRecord {
@@ -10,6 +11,7 @@ export interface PresenceRecord {
 	readonly afk?: boolean;
 	readonly mobile?: boolean;
 	readonly custom_status?: GatewayCustomStatusPayload | null;
+	readonly activities?: ReadonlyArray<ActivityResponse> | null;
 }
 
 export type Presence = PresenceRecord;
