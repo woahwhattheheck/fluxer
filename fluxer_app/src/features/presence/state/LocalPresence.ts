@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type {GatewayUserActivity} from '@app/features/gateway/types/GatewayPresenceTypes';
 import type {AccountPresenceIntent} from '@app/features/auth/state/AccountStorage';
 import {deferUntilModulesLoaded} from '@app/features/platform/utils/DeferUntilModulesLoaded';
 import Idle from '@app/features/ui/state/Idle';
@@ -16,6 +17,7 @@ type Presence = Readonly<{
 	afk: boolean;
 	mobile: boolean;
 	custom_status: GatewayCustomStatusPayload | null;
+	activities: Array<GatewayUserActivity> | null;
 }>;
 
 export const ACCOUNT_PRESENCE_INTENT_MAX_AGE_MS = 60 * 1000;
@@ -42,6 +44,12 @@ class LocalPresence {
 	afk: boolean = false;
 	mobile: boolean = false;
 	customStatus: CustomStatus | null = null;
+	activities: Array<GatewayUserActivity> | null = null;
+
+	setActivities(activities: Array<GatewayUserActivity> | null): void {
+		this.activities = activities && activities.length > 0 ? activities : null;
+		this.updatePresence();
+	}
 	private restoredIntent: AccountPresenceIntent | null = null;
 
 	constructor() {
@@ -93,6 +101,7 @@ class LocalPresence {
 			afk: this.afk,
 			mobile: this.mobile,
 			custom_status: toGatewayCustomStatus(this.customStatus),
+			activities: this.activities,
 		};
 	}
 
@@ -135,7 +144,7 @@ class LocalPresence {
 		const hydrated = userSettings?.isHydrated() ? '1' : '0';
 		const afk = this.afk ? '1' : '0';
 		const mobile = this.mobile ? '1' : '0';
-		return `hydrated:${hydrated}|${this.status}|${customStatusToKey(this.customStatus)}|afk:${afk}|mobile:${mobile}`;
+		return `hydrated:${hydrated}|${this.status}|${customStatusToKey(this.customStatus)}|afk:${afk}|mobile:${mobile}|activities:${JSON.stringify(this.activities ?? [])}`;
 	}
 
 	private computeAfk(idleSince: number, isMobile: boolean, settings: LocalPresenceUserSettings | null): boolean {

@@ -187,7 +187,8 @@ build_presence_data(Request) ->
         status => Status,
         friend_ids => maps:get(friend_ids, Request, []),
         group_dm_recipients => maps:get(group_dm_recipients, Request, #{}),
-        custom_status => maps:get(custom_status, Request, null)
+        custom_status => maps:get(custom_status, Request, null),
+        activities => maps:get(activities, Request, null)
     }.
 
 -spec register_new_presence(

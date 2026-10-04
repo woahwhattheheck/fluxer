@@ -28,6 +28,7 @@ import {Logger, LogLevel} from '@app/features/platform/utils/AppLogger';
 import {ExponentialBackoff} from '@app/features/platform/utils/RetryScheduler';
 import LayerManager from '@app/features/ui/state/LayerManager';
 import MobileLayout from '@app/features/ui/state/MobileLayout';
+import type {GatewayUserActivity} from '@app/features/gateway/types/GatewayPresenceTypes';
 import type {GatewayCustomStatusPayload} from '@app/features/user/state/CustomStatus';
 import MediaEngine from '@app/features/voice/engine/MediaEngineFacade';
 import type {GatewayErrorCode} from '@fluxer/constants/src/GatewayConstants';
@@ -83,6 +84,7 @@ export interface GatewayPresence {
 	afk: boolean;
 	mobile: boolean;
 	custom_status?: GatewayCustomStatusPayload | null;
+	activities?: Array<GatewayUserActivity> | null;
 }
 
 export interface GatewayVoiceStateUpdateParams {
@@ -485,6 +487,7 @@ export class GatewaySocket extends EventEmitter<GatewaySocketEvents> {
 		afk?: boolean,
 		mobile?: boolean,
 		customStatus?: GatewayCustomStatusPayload | null,
+		activities?: Array<GatewayUserActivity> | null,
 	): void {
 		if (!this.isConnected()) return;
 		this.sendPayload({
@@ -494,6 +497,7 @@ export class GatewaySocket extends EventEmitter<GatewaySocketEvents> {
 				...(afk !== undefined && {afk}),
 				...(mobile !== undefined && {mobile}),
 				...(customStatus !== undefined && {custom_status: customStatus}),
+				...(activities !== undefined && {activities}),
 			},
 		});
 	}

@@ -505,11 +505,25 @@ handle_presence_update_cast(Update, State) ->
     NewStatus = maps:get(status, Update, Status),
     NewAfk = maps:get(afk, Update, Afk),
     NewMobile = maps:get(mobile, Update, Mobile),
-    NewState = maybe_update_resume_status(
-        NewStatus, State#{status => NewStatus, afk => NewAfk, mobile => NewMobile}
+    NewState = maybe_update_activities(
+        Update,
+        maybe_update_resume_status(
+            NewStatus, State#{status => NewStatus, afk => NewAfk, mobile => NewMobile}
+        )
     ),
-    send_presence_update(State, SessionId, NewStatus, NewAfk, NewMobile, Update),
+    send_presence_update(NewState, SessionId, NewStatus, NewAfk, NewMobile, Update),
     {noreply, NewState}.
+
+-spec maybe_update_activities(map(), session_state()) -> session_state().
+maybe_update_activities(Update, State) ->
+    case maps:find(activities, Update) of
+        {ok, Activities} -> State#{activities => Activities};
+        error ->
+            case maps:find(<<"activities">>, Update) of
+                {ok, Activities} -> State#{activities => presence_update:normalize_activities(Activities)};
+                error -> State
+            end
+    end.
 
 -spec maybe_update_resume_status(status(), session_state()) -> session_state().
 maybe_update_resume_status(offline, State) ->
@@ -523,14 +537,25 @@ maybe_update_resume_status(Status, State) ->
     ok.
 send_presence_update(#{presence_pid := undefined}, _Sid, _St, _Afk, _Mob, _Upd) ->
     ok;
-send_presence_update(#{presence_pid := Pid}, SessionId, NewStatus, NewAfk, NewMobile, Update) ->
+send_presence_update(
+    #{presence_pid := Pid} = State, SessionId, NewStatus, NewAfk, NewMobile, Update
+) ->
     BaseMsg = #{
         session_id => SessionId, status => NewStatus, afk => NewAfk, mobile => NewMobile
     },
-    Msg =
+    CustomStatusMsg =
         case maps:find(<<"custom_status">>, Update) of
             {ok, CS} -> BaseMsg#{<<"custom_status">> => CS};
             error -> BaseMsg
+        end,
+    Msg =
+        case maps:is_key(activities, Update) of
+            true -> CustomStatusMsg#{activities => maps:get(activities, State, [])};
+            false ->
+                case maps:is_key(<<"activities">>, Update) of
+                    true -> CustomStatusMsg#{<<"activities">> => maps:get(activities, State, null)};
+                    false -> CustomStatusMsg
+                end
         end,
     gen_server:cast(Pid, {presence_update, Msg}),
     ok.
@@ -588,6 +613,7 @@ serialize_transfer_identity(State) ->
         user_id => maps:get(user_id, State),
         user_data => maps:get(user_data, State),
         custom_status => maps:get(custom_status, State, null),
+        activities => maps:get(activities, State, null),
         version => maps:get(version, State),
         token_hash => maps:get(token_hash, State),
         auth_session_id_hash => maps:get(auth_session_id_hash, State),

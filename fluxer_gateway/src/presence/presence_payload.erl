@@ -3,23 +3,43 @@
 -module(presence_payload).
 -typing([eqwalizer]).
 
--export([build/5]).
+-export([build/5, build/6]).
 
--export_type([status/0, custom_status/0]).
+-export_type([status/0, custom_status/0, activities/0]).
 
 -type status() :: online | offline | idle | dnd | invisible | binary().
 -type custom_status() :: map() | null.
+-type activities() :: [map()] | null.
 
 -spec build(map(), status(), boolean(), boolean(), custom_status()) -> map().
 build(UserData, Status, Mobile, Afk, CustomStatus) ->
+    build(UserData, Status, Mobile, Afk, CustomStatus, null).
+
+-spec build(map(), status(), boolean(), boolean(), custom_status(), activities()) -> map().
+build(UserData, Status, Mobile, Afk, CustomStatus, Activities) ->
     StatusBin = ensure_status_binary(Status),
-    #{
+    Base = #{
         <<"user">> => user_utils:normalize_user(UserData),
         <<"status">> => StatusBin,
         <<"mobile">> => Mobile,
         <<"afk">> => Afk,
         <<"custom_status">> => custom_status_for(StatusBin, CustomStatus)
-    }.
+    },
+    maybe_add_activities(Base, StatusBin, Activities).
+
+-spec maybe_add_activities(map(), binary(), activities()) -> map().
+maybe_add_activities(Base, StatusBin, Activities) ->
+    case activities_for(StatusBin, Activities) of
+        null -> Base;
+        Normalized -> Base#{<<"activities">> => Normalized}
+    end.
+
+-spec activities_for(binary(), activities()) -> activities().
+activities_for(<<"offline">>, _Activities) -> null;
+activities_for(<<"invisible">>, _Activities) -> null;
+activities_for(_StatusBin, null) -> null;
+activities_for(_StatusBin, Activities) when is_list(Activities) -> Activities;
+activities_for(_StatusBin, _) -> null.
 
 -spec ensure_status_binary(term()) -> binary().
 ensure_status_binary(online) -> <<"online">>;
@@ -137,4 +157,29 @@ future_custom_status() ->
         erlang:system_time(millisecond) + 3600000, [{unit, millisecond}, {offset, "Z"}]
     ),
     #{<<"text">> => <<"brb">>, <<"expires_at">> => list_to_binary(ExpiresAt)}.
+
+build_with_activities_test() ->
+    User = test_user(),
+    Activities = [#{<<"name">> => <<"Game">>, <<"type">> => 0}],
+    Result = build(User, online, false, false, null, Activities),
+    ?assertEqual(Activities, maps:get(<<"activities">>, Result)).
+
+build_without_activities_omits_key_test() ->
+    Result = build(test_user(), online, false, false, null, null),
+    ?assertEqual(undefined, maps:get(<<"activities">>, Result, undefined)).
+
+build_offline_strips_activities_test() ->
+    Activities = [#{<<"name">> => <<"Game">>, <<"type">> => 0}],
+    Result = build(test_user(), offline, false, false, null, Activities),
+    ?assertEqual(undefined, maps:get(<<"activities">>, Result, undefined)).
+
+build_invisible_strips_activities_test() ->
+    Activities = [#{<<"name">> => <<"Game">>, <<"type">> => 0}],
+    Result = build(test_user(), invisible, false, false, null, Activities),
+    ?assertEqual(undefined, maps:get(<<"activities">>, Result, undefined)).
+
+build_legacy_arity5_never_includes_activities_test() ->
+    Result = build(test_user(), online, false, false, null),
+    ?assertEqual(undefined, maps:get(<<"activities">>, Result, undefined)).
+
 -endif.

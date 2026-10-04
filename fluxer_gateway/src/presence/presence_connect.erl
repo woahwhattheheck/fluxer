@@ -117,7 +117,8 @@ publish_offline_on_terminate(UserId, State) ->
                 <<"status">> => <<"offline">>,
                 <<"mobile">> => false,
                 <<"afk">> => false,
-                <<"custom_status">> => null
+                <<"custom_status">> => null,
+                <<"activities">> => null
             },
             presence_bus:publish(UserId, Payload);
         false ->

@@ -201,6 +201,7 @@ build_initial_state(PresenceData) ->
         sessions => #{},
         push_buffer => [],
         custom_status => maps:get(custom_status, PresenceData, null),
+        activities => presence_update:normalize_activities(maps:get(activities, PresenceData, null)),
         status => Status,
         guild_ids => presence_targets:map_from_ids(GuildIds),
         temporary_guild_ids => #{},
@@ -221,11 +222,14 @@ select_friend_ids(false, FriendIds) ->
 
 -spec handle_presence_update_cast(map(), state()) -> {noreply, state()}.
 handle_presence_update_cast(Request, State) ->
-    {UpdatedRequest, StateWithCustomStatus} = presence_update:maybe_handle_custom_status(
+    {RequestWithCustomStatus, StateWithCustomStatus} = presence_update:maybe_handle_custom_status(
         Request, State
     ),
+    {UpdatedRequest, StateWithActivities} = presence_update:maybe_handle_activities(
+        RequestWithCustomStatus, StateWithCustomStatus
+    ),
     {noreply, NewState} = presence_session:handle_presence_update(
-        UpdatedRequest, StateWithCustomStatus
+        UpdatedRequest, StateWithActivities
     ),
     FinalState = presence_broadcast:publish_global_presence(
         maps:get(sessions, NewState), NewState
@@ -295,6 +299,26 @@ normalize_start_link(ignore) ->
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 
+build_initial_state_normalizes_activities_test() ->
+    Valid = #{<<"name">> => <<"Game">>, <<"type">> => 0},
+    Invalid = #{<<"name">> => <<"Bad">>, <<"type">> => 6},
+    State = build_initial_state(#{
+        user_id => 1,
+        user_data => #{},
+        status => online,
+        activities => [Invalid, Valid]
+    }),
+    ?assertEqual([Valid], maps:get(activities, State)).
+
+build_initial_state_clears_null_activities_test() ->
+    State = build_initial_state(#{
+        user_id => 1,
+        user_data => #{},
+        status => online,
+        activities => null
+    }),
+    ?assertEqual(null, maps:get(activities, State)).
+
 session_connect_pid_prefers_request_session_pid_test() ->
     Caller = self(),
     Other = spawn(fun idle_session_proc/0),
@@ -349,6 +373,7 @@ test_state(Sessions) ->
         sessions => Sessions,
         push_buffer => [],
         custom_status => null,
+        activities => null,
         status => online,
         guild_ids => #{},
         temporary_guild_ids => #{},

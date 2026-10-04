@@ -5,6 +5,8 @@
 
 -export([
     maybe_handle_custom_status/2,
+    maybe_handle_activities/2,
+    normalize_activities/1,
     handle_user_settings_update/2,
     handle_user_update_event/2,
     handle_message_create_event/2,
@@ -37,6 +39,37 @@ maybe_handle_custom_status(Request, State) ->
             compare_and_validate(CustomStatus, Request, State);
         _ ->
             {Request, State}
+    end.
+
+-spec maybe_handle_activities(map(), state()) -> {map(), state()}.
+maybe_handle_activities(Request, State) ->
+    case maps:find(activities, Request) of
+        {ok, null} ->
+            {Request#{activities => null}, State#{activities := null}};
+        {ok, Activities} when is_list(Activities) ->
+            Normalized = normalize_activities(Activities),
+            {Request#{activities => Normalized}, State#{activities := Normalized}};
+        {ok, _} ->
+            {Request, State};
+        error ->
+            case maps:find(<<"activities">>, Request) of
+                error ->
+                    {Request, State};
+                {ok, null} ->
+                    {Request#{<<"activities">> => null}, State#{activities := null}};
+                {ok, Activities} when is_list(Activities) ->
+                    Normalized = normalize_activities(Activities),
+                    {Request#{<<"activities">> => Normalized}, State#{activities := Normalized}};
+                _ ->
+                    {Request, State}
+            end
+    end.
+
+-spec normalize_activities(term()) -> [map()] | null.
+normalize_activities(Activities) ->
+    case presence_activities:normalize(Activities) of
+        [] -> null;
+        List -> lists:sublist(List, 5)
     end.
 
 -spec handle_user_settings_update(map(), state()) -> state().
@@ -348,6 +381,88 @@ parse_snowflake(FieldName, Value) ->
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+
+-spec is_valid_activity(map()) -> boolean().
+is_valid_activity(Activity) ->
+    case maps:get(<<"name">>, Activity, undefined) of
+        Name when is_binary(Name), byte_size(Name) > 0, byte_size(Name) =< 128 ->
+            case maps:get(<<"type">>, Activity, undefined) of
+                Type when is_integer(Type), Type >= 0, Type =< 5 -> true;
+                _ -> false
+            end;
+        _ ->
+            false
+    end.
+
+normalize_activities_valid_test() ->
+    Activities = [#{<<"name">> => <<"Minecraft">>, <<"type">> => 0}],
+    ?assertEqual(Activities, normalize_activities(Activities)).
+
+normalize_activities_drops_invalid_entries_test() ->
+    Valid = #{<<"name">> => <<"osu!">>, <<"type">> => 0},
+    ?assertEqual(
+        [Valid],
+        normalize_activities([Valid, #{<<"name">> => <<>>, <<"type">> => 0}, not_a_map, #{<<"type">> => 0}])
+    ).
+
+normalize_activities_caps_at_five_test() ->
+    Six = [#{<<"name">> => integer_to_binary(N), <<"type">> => 0} || N <- lists:seq(1, 6)],
+    ?assertEqual(5, length(normalize_activities(Six))).
+
+normalize_activities_empty_becomes_null_test() ->
+    ?assertEqual(null, normalize_activities([])),
+    ?assertEqual(null, normalize_activities([junk])).
+
+is_valid_activity_type_bounds_test() ->
+    ?assert(is_valid_activity(#{<<"name">> => <<"A">>, <<"type">> => 0})),
+    ?assert(is_valid_activity(#{<<"name">> => <<"A">>, <<"type">> => 5})),
+    ?assertNot(is_valid_activity(#{<<"name">> => <<"A">>, <<"type">> => 6})),
+    ?assertNot(is_valid_activity(#{<<"name">> => <<"A">>, <<"type">> => -1})),
+    ?assertNot(is_valid_activity(#{<<"name">> => <<"A">>})),
+    ?assertNot(is_valid_activity(#{<<"type">> => 0})).
+
+is_valid_activity_name_bounds_test() ->
+    ?assertNot(is_valid_activity(#{<<"name">> => binary:copy(<<"x">>, 129), <<"type">> => 0})),
+    ?assert(is_valid_activity(#{<<"name">> => binary:copy(<<"x">>, 128), <<"type">> => 0})).
+
+maybe_handle_activities_sets_state_test() ->
+    State = #{activities => null},
+    Activities = [#{<<"name">> => <<"Game">>, <<"type">> => 0}],
+    {Request, NewState} = maybe_handle_activities(#{<<"activities">> => Activities}, State),
+    ?assertEqual(Activities, maps:get(<<"activities">>, Request)),
+    ?assertEqual(Activities, maps:get(activities, NewState)).
+
+maybe_handle_activities_clear_test() ->
+    State = #{activities => [#{<<"name">> => <<"Game">>, <<"type">> => 0}]},
+    {Request, NewState} = maybe_handle_activities(#{<<"activities">> => null}, State),
+    ?assertEqual(null, maps:get(<<"activities">>, Request)),
+    ?assertEqual(null, maps:get(activities, NewState)).
+
+maybe_handle_activities_absent_is_noop_test() ->
+    State = #{activities => null},
+    {Request, NewState} = maybe_handle_activities(#{}, State),
+    ?assertEqual(false, maps:is_key(<<"activities">>, Request)),
+    ?assertEqual(State, NewState).
+
+maybe_handle_activities_non_list_is_noop_test() ->
+    State = #{activities => null},
+    {Request, NewState} = maybe_handle_activities(#{<<"activities">> => 42}, State),
+    ?assertEqual(42, maps:get(<<"activities">>, Request)),
+    ?assertEqual(State, NewState).
+
+maybe_handle_activities_atom_key_normalizes_test() ->
+    State = #{activities => null},
+    Valid = #{<<"name">> => <<"Game">>, <<"type">> => 0},
+    Invalid = #{<<"name">> => <<"Bad">>, <<"type">> => 6},
+    {Request, NewState} = maybe_handle_activities(#{activities => [Invalid, Valid]}, State),
+    ?assertEqual([Valid], maps:get(activities, Request)),
+    ?assertEqual([Valid], maps:get(activities, NewState)).
+
+maybe_handle_activities_atom_key_clear_test() ->
+    State = #{activities => [#{<<"name">> => <<"Game">>, <<"type">> => 0}]},
+    {Request, NewState} = maybe_handle_activities(#{activities => null}, State),
+    ?assertEqual(null, maps:get(activities, Request)),
+    ?assertEqual(null, maps:get(activities, NewState)).
 
 is_push_eligible_test() ->
     ?assertEqual(true, is_push_eligible(#{})),
