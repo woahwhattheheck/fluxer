@@ -517,7 +517,7 @@ handle_presence_update_cast(Update, State) ->
 -spec maybe_update_activities(map(), session_state()) -> session_state().
 maybe_update_activities(Update, State) ->
     case maps:find(activities, Update) of
-        {ok, Activities} -> State#{activities => Activities};
+        {ok, Activities} -> State#{activities => presence_update:normalize_activities(Activities)};
         error ->
             case maps:find(<<"activities">>, Update) of
                 {ok, Activities} -> State#{activities => presence_update:normalize_activities(Activities)};
@@ -526,6 +526,18 @@ maybe_update_activities(Update, State) ->
     end.
 
 -spec maybe_update_resume_status(status(), session_state()) -> session_state().
+maybe_update_activities_atom_key_normalizes_test() ->
+    State = #{activities => null},
+    Valid = #{<<"name">> => <<"Game">>, <<"type">> => 0},
+    Invalid = #{<<"name">> => <<"Bad">>, <<"type">> => 6},
+    Updated = maybe_update_activities(#{activities => [Invalid, Valid]}, State),
+    ?assertEqual([Valid], maps:get(activities, Updated)).
+
+maybe_update_activities_atom_key_clear_test() ->
+    State = #{activities => [#{<<"name">> => <<"Game">>, <<"type">> => 0}]},
+    Updated = maybe_update_activities(#{activities => null}, State),
+    ?assertEqual(null, maps:get(activities, Updated)).
+
 maybe_update_resume_status(offline, State) ->
     State;
 maybe_update_resume_status(Status, State) ->
