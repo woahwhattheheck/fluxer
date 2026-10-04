@@ -37,11 +37,17 @@ export class ActivityManager {
 	private pollTimer: NodeJS.Timeout | null = null;
 	private detectables: Array<import('@electron/common/RpcActivityTypes').DetectableApplication> = [];
 	private lastEmittedKey = '';
+	private running = false;
+	private lifecycleVersion = 0;
+	private detectionVersion = 0;
+	private publishedDetectionVersion = 0;
+	private rpcLifecycle: Promise<void> = Promise.resolve();
 
 	constructor(options: ActivityManagerOptions) {
 		this.options = options;
 		this.rpcServer = new ArRpcServer({
 			onActivity: (activity, pid) => {
+				if (!this.running) return;
 				if (activity == null) {
 					this.rpcActivities.delete(pid);
 				} else {
@@ -53,9 +59,19 @@ export class ActivityManager {
 	}
 
 	async start(): Promise<void> {
-		await this.loadDetectables();
-		await this.rpcServer.start();
+		const lifecycle = ++this.lifecycleVersion;
+		this.running = true;
+		if (this.pollTimer != null) clearInterval(this.pollTimer);
+		this.pollTimer = null;
+		const detectables = await this.loadDetectables();
+		if (lifecycle !== this.lifecycleVersion) return;
+		this.detectables = detectables;
+		await this.enqueueRpc(async () => {
+			if (lifecycle === this.lifecycleVersion) await this.rpcServer.start();
+		});
+		if (lifecycle !== this.lifecycleVersion) return;
 		await this.refreshDetected();
+		if (lifecycle !== this.lifecycleVersion) return;
 		this.pollTimer = setInterval(() => {
 			void this.refreshDetected();
 		}, this.options.pollIntervalMs ?? PROCESS_POLL_INTERVAL_MS);
@@ -63,11 +79,13 @@ export class ActivityManager {
 	}
 
 	async stop(): Promise<void> {
+		this.running = false;
+		this.lifecycleVersion += 1;
 		if (this.pollTimer != null) clearInterval(this.pollTimer);
 		this.pollTimer = null;
 		this.detectedActivities = [];
 		this.rpcActivities.clear();
-		await this.rpcServer.stop();
+		await this.enqueueRpc(() => this.rpcServer.stop());
 		this.emit();
 	}
 
@@ -75,7 +93,15 @@ export class ActivityManager {
 		return mergeActivities([...this.rpcActivities.values()], this.detectedActivities);
 	}
 
-	private async loadDetectables(): Promise<void> {
+	// A delayed socket bind must finish before its stop closes the transport.
+	// This queue covers only RPC lifecycle operations, never slow process scans.
+	private enqueueRpc(operation: () => Promise<void>): Promise<void> {
+		const pending = this.rpcLifecycle.then(operation);
+		this.rpcLifecycle = pending.catch(() => {});
+		return pending;
+	}
+
+	private async loadDetectables(): Promise<Array<import('@electron/common/RpcActivityTypes').DetectableApplication>> {
 		const fetchText = this.options.fetchDetectables ?? (() => readFile(this.options.detectablesPath, 'utf8'));
 		try {
 			const text = await fetchText();
@@ -83,14 +109,16 @@ export class ActivityManager {
 			const parsed = parseDetectables(payload);
 			// Preserve usable overrides, including an intentional empty catalogue.
 			if (Array.isArray(payload) && (payload.length === 0 || parsed.length > 0)) {
-				this.detectables = parsed;
-				return;
+				return parsed;
 			}
 		} catch {}
-		this.detectables = parseDetectables(bundledDetectables);
+		return parseDetectables(bundledDetectables);
 	}
 
 	private async refreshDetected(): Promise<void> {
+		if (!this.running) return;
+		const lifecycle = this.lifecycleVersion;
+		const detection = ++this.detectionVersion;
 		const lister = this.options.listProcesses ?? listRunningProcesses;
 		let processes: Array<import('@electron/common/RpcActivityTypes').DetectedProcess> = [];
 		try {
@@ -98,6 +126,10 @@ export class ActivityManager {
 		} catch {
 			processes = [];
 		}
+		// Accept completed scans in request order. A slow older completion cannot
+		// replace a newer result, but a pending poll need not suppress useful data.
+		if (!this.running || lifecycle !== this.lifecycleVersion || detection < this.publishedDetectionVersion) return;
+		this.publishedDetectionVersion = detection;
 		this.detectedActivities = matchDetectableApplications(this.detectables, processes, process.platform);
 		this.emit();
 	}
