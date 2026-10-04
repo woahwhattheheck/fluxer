@@ -289,6 +289,14 @@ export const useMessageActionMenuData = (
 					),
 				});
 			}
+			if (message.isUserMessage() && supportsInteractiveActions && permissions?.canCreateThread) {
+				interactionActions.push({
+					id: messageActionMenuItemIds.startThread,
+					icon: <CreateChannelIcon size={20} data-flx="channel.message-action-menu.groups.start-thread-icon" />,
+					label: i18n._(START_THREAD_DESCRIPTOR),
+					onClick: handlers.handleStartThread,
+				});
+			}
 			if (message.isUserMessage() && supportsInteractiveActions && permissions?.canForwardMessage) {
 				interactionActions.push({
 					id: messageActionMenuItemIds.forward,
