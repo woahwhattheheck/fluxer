@@ -75,7 +75,8 @@ test('a slow older scan cannot replace a newer completed detection', async (t) =
 	await newer;
 	oldScan.resolve([{name: 'old'}]);
 	await older;
-	assert.deepEqual(manager.currentActivities().map(({name}) => name), ['New']);
+	assert.deepEqual(manager.detectedActivities.map(({name}) => name), ['New']);
+	assert.deepEqual(manager.currentActivities(), []);
 });
 
 test('stop retires a pending initial scan, its poll timer and late RPC events', async (t) => {

@@ -1,12 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import {
-	isDeclaredActivityType,
-	type DetectableApplication,
-	type DetectableExecutable,
-	type DetectedApplicationActivity,
-	type DetectedProcess,
+import type {
+	ActivityTypeValue,
+	DetectableApplication,
+	DetectableExecutable,
+	DetectedApplicationActivity,
+	DetectedProcess,
 } from '@electron/common/RpcActivityTypes';
+
+function declaredCatalogueType(value: unknown): ActivityTypeValue | undefined {
+	if (value === 0 || value === 1 || value === 2 || value === 3 || value === 4 || value === 5) {
+		return value;
+	}
+	return undefined;
+}
 
 /**
  * Pure matching engine for `fluxerapp/detectables` entries.
@@ -89,7 +96,7 @@ export function matchDetectableApplications(
 			}
 		}
 		if (!hasMatch) continue;
-		const type = isDeclaredActivityType(application.type) ? application.type : undefined;
+		const type = declaredCatalogueType(application.type);
 		matched.set(application.name, {
 			kind: 'detected',
 			name: application.name,
@@ -124,13 +131,14 @@ export function parseDetectables(payload: unknown): Array<DetectableApplication>
 			});
 		}
 		if (executables.length === 0) continue;
+		const type = declaredCatalogueType(candidate.type);
 		applications.push({
 			name: candidate.name,
 			icon: candidate.icon,
 			executables,
 			...(Array.isArray(candidate.aliases) ? {aliases: candidate.aliases} : {}),
 			...(candidate.presence_assets ? {presence_assets: candidate.presence_assets} : {}),
-			...(isDeclaredActivityType(candidate.type) ? {type: candidate.type} : {}),
+			...(type === undefined ? {} : {type}),
 		});
 	}
 	return applications;
