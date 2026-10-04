@@ -113,6 +113,7 @@ try_session_connect(
         status => Status,
         afk => Afk,
         mobile => Mobile,
+        activities => maps:get(activities, State, []),
         socket_pid => SocketPid
     },
     ConnectStartedAt = gateway_timings:start(),
@@ -227,6 +228,92 @@ maybe_demonitor_presence(State) ->
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+
+activities_survive_identify_updates_transfer_and_reconnect_test() ->
+    Activity = #{<<"name">> => <<"Focus">>, <<"type">> => 0},
+    SessionData = activity_identify_session_data([Activity]),
+    State0 = (session_init:build_state(SessionData))#{ready => undefined},
+    TestPid = self(),
+    Presence = spawn(fun() -> activity_presence_loop(TestPid) end),
+    try
+        {noreply, State1} = do_session_connect(Presence, 0, State0),
+        Connect = next_activity_request(connect),
+        ?assertEqual(<<"activity-session">>, maps:get(session_id, Connect)),
+        ?assertEqual([Activity], maps:get(activities, Connect)),
+        {noreply, State2} = session_lifecycle:handle_presence_update_cast(
+            #{status => idle}, State1
+        ),
+        ?assertEqual([Activity], maps:get(activities, State2)),
+        ?assertEqual(error, maps:find(activities, next_activity_request(update))),
+        {noreply, State3} = session_lifecycle:handle_presence_update_cast(
+            #{activities => null, session_id => <<"other-session">>}, State2
+        ),
+        Clear = next_activity_request(update),
+        ?assertEqual(<<"activity-session">>, maps:get(session_id, Clear)),
+        ?assertEqual([], maps:get(activities, Clear)),
+        ?assertEqual([], maps:get(activities, State3)),
+        Transfer = session_lifecycle:serialize_transfer_state(State3),
+        Restored = session_init:build_state(Transfer#{socket_pid => self()}),
+        {noreply, State4} = do_session_connect(Presence, 0, Restored),
+        ?assertEqual([], maps:get(activities, State4)),
+        ?assertEqual([], maps:get(activities, next_activity_request(connect)))
+    after
+        Presence ! stop
+    end.
+
+activity_identify_session_data(Activities) ->
+    Properties = #{<<"os">> => <<"linux">>, <<"browser">> => <<"test">>, <<"device">> => <<>>},
+    {ok, Token, Properties, Presence, IgnoredEvents, Flags, _, _} =
+        gateway_handler_identify:validate_identify_data(#{
+            <<"token">> => <<"test-token">>,
+            <<"properties">> => Properties,
+            <<"presence">> => #{<<"status">> => <<"online">>, <<"activities">> => Activities}
+        }),
+    Identify = #{
+        token => Token,
+        properties => Properties,
+        presence => Presence,
+        ignored_events => IgnoredEvents,
+        flags => Flags
+    },
+    User = #{
+        <<"id">> => <<"123">>,
+        <<"username">> => <<"test">>,
+        <<"discriminator">> => <<"0001">>,
+        <<"avatar">> => null,
+        <<"flags">> => 0
+    },
+    session_manager_shard_drain:build_session_data(
+        #{<<"guilds">> => [], <<"user">> => User},
+        Identify,
+        1,
+        self(),
+        <<"activity-session">>,
+        User,
+        123
+    ).
+
+activity_presence_loop(TestPid) ->
+    receive
+        {'$gen_call', From, {session_connect, Request}} ->
+            TestPid ! {activity_request, connect, Request},
+            gen_server:reply(From, {ok, []}),
+            activity_presence_loop(TestPid);
+        {'$gen_cast', {presence_update, Request}} ->
+            TestPid ! {activity_request, update, Request},
+            activity_presence_loop(TestPid);
+        stop ->
+            ok;
+        _ ->
+            activity_presence_loop(TestPid)
+    end.
+
+next_activity_request(Type) ->
+    receive
+        {activity_request, Type, Request} -> Request
+    after 1000 ->
+        error({activity_request_not_received, Type})
+    end.
 
 try_session_connect_failure_schedules_retry_test() ->
     DeadPid = spawn(fun() -> ok end),

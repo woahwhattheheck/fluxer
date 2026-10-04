@@ -120,7 +120,8 @@ build_presence_map(Payload, Member) ->
     Afk = maps:get(<<"afk">>, Payload, false),
     MemberUser = maps:get(<<"user">>, Member, #{}),
     CustomStatus = maps:get(<<"custom_status">>, Payload, null),
-    presence_payload:build(MemberUser, NormalizedStatusBin, Mobile, Afk, CustomStatus).
+    Activities = maps:get(<<"activities">>, Payload, []),
+    presence_payload:build(MemberUser, NormalizedStatusBin, Mobile, Afk, CustomStatus, Activities).
 
 -spec maybe_handle_offline(atom(), user_id(), guild_state()) -> guild_state().
 maybe_handle_offline(offline, UserId, State) ->
@@ -516,18 +517,58 @@ handle_bus_presence_casts_presence_update_to_broadcaster_test() ->
                 }
             }
         },
-        {noreply, _NewState} = handle_bus_presence(1, online_payload(), State),
+        Member = #{} = guild_permissions:find_member_by_user_id(1, State),
+        Tab = maps:get(member_presence, State),
+        ets:insert(Tab, {1, build_presence_map(online_payload(), Member)}),
+        Activities = [#{<<"name">> => <<"Fluxer">>, <<"type">> => 0}],
+        Payload = (online_payload())#{<<"activities">> => Activities},
+        {noreply, _NewState} = handle_bus_presence(1, Payload, State),
+        ?assertEqual(
+            Activities, maps:get(<<"activities">>, guild_state_member:lookup_presence(Tab, 1))
+        ),
         receive
             {'$gen_cast', {event_broadcast, presence_update, Update, Pids}} ->
                 ?assertEqual([Subscriber], Pids),
                 ?assertEqual(<<"42">>, maps:get(<<"guild_id">>, Update)),
-                ?assertEqual(<<"online">>, maps:get(<<"status">>, Update))
+                ?assertEqual(<<"online">>, maps:get(<<"status">>, Update)),
+                ?assertEqual(Activities, maps:get(<<"activities">>, Update))
         after 1000 ->
             ?assert(false)
         end
     after
         exit(Subscriber, kill)
     end.
+
+cached_presence_replay_activities_test_() ->
+    Activities = [#{<<"name">> => <<"Fluxer">>, <<"type">> => 0}],
+    [
+        {binary_to_list(Status), fun() ->
+            State = (presence_test_state())#{
+                sessions => #{<<"s2">> => #{user_id => 2, pid => self()}}
+            },
+            Payload = (online_payload())#{
+                <<"status">> => Status, <<"activities">> => Activities
+            },
+            try
+                ?assertEqual(
+                    State, send_presence_lookup_to_session(1, <<"s2">>, {ok, Payload}, State)
+                ),
+                receive
+                    {'$gen_cast', {dispatch, presence_update, Update}} ->
+                        ?assertEqual(<<"42">>, maps:get(<<"guild_id">>, Update)),
+                        ?assertEqual(Expected, maps:get(<<"activities">>, Update))
+                after 1000 ->
+                    ?assert(false)
+                end
+            after
+                ets:delete(maps:get(member_presence, State)),
+                guild_member_list_subs:destroy(maps:get(member_list_subscriptions, State))
+            end
+        end}
+     || {Status, Expected} <- [
+            {<<"online">>, Activities}, {<<"offline">>, []}, {<<"invisible">>, []}
+        ]
+    ].
 
 handle_bus_presence_skips_broadcaster_without_subscribers_test() ->
     State = (presence_test_state())#{broadcaster_pid => self()},

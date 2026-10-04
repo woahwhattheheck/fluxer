@@ -14,8 +14,8 @@ export const ActivityTypeSchema = z.union([
 const ActivityTimestampSchema = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 
 export const ActivityTimestampsResponse = z.object({
-	start: ActivityTimestampSchema.nullish().describe('Unix timestamp in milliseconds when the activity started'),
-	end: ActivityTimestampSchema.nullish().describe('Unix timestamp in milliseconds when the activity ends'),
+	start: ActivityTimestampSchema.nullish().describe("Activity start timestamp, preserved in the producer's units"),
+	end: ActivityTimestampSchema.nullish().describe("Activity end timestamp, preserved in the producer's units"),
 });
 
 export const ActivityAssetsResponse = z.object({
@@ -28,6 +28,7 @@ export const ActivityAssetsResponse = z.object({
 export const ActivityResponse = z.object({
 	name: z.string().min(1).describe('The activity name'),
 	type: ActivityTypeSchema.describe('Activity kind: playing, streaming, listening, watching, custom, or competing'),
+	application_id: z.string().nullish().describe('The application identifier supplied by the activity producer'),
 	details: z.string().nullish(),
 	state: z.string().nullish(),
 	timestamps: ActivityTimestampsResponse.nullish(),

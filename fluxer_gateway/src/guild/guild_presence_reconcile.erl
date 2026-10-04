@@ -21,7 +21,7 @@
 -type user_id() :: integer().
 -type presence() :: map().
 -type presence_by_id() :: #{user_id() => presence()}.
--type display() :: {binary(), boolean(), boolean(), term()}.
+-type display() :: {binary(), boolean(), boolean(), term(), [map()]}.
 -type mismatch() :: {user_id(), presence(), display()}.
 
 -define(DEFAULT_INTERVAL_MS, 30000).
@@ -210,15 +210,22 @@ current_display(UserId, State) ->
 
 -spec display_fields(presence()) -> display().
 display_fields(Presence) ->
+    Status = normalize_status(maps:get(<<"status">>, Presence, <<"offline">>)),
     {
-        normalize_status(maps:get(<<"status">>, Presence, <<"offline">>)),
+        Status,
         maps:get(<<"mobile">>, Presence, false),
         maps:get(<<"afk">>, Presence, false),
-        maps:get(<<"custom_status">>, Presence, null)
+        maps:get(<<"custom_status">>, Presence, null),
+        display_activities(Status, Presence)
     }.
 
+-spec display_activities(binary(), presence()) -> [map()].
+display_activities(<<"offline">>, _Presence) -> [];
+display_activities(_Status, Presence) ->
+    presence_activities:normalize(maps:get(<<"activities">>, Presence, [])).
+
 -spec offline_display() -> display().
-offline_display() -> {<<"offline">>, false, false, null}.
+offline_display() -> {<<"offline">>, false, false, null, []}.
 
 -spec normalize_status(term()) -> binary().
 normalize_status(<<"invisible">>) -> <<"offline">>;
@@ -309,6 +316,43 @@ reconcile_action_replays_offline_when_stale_online_test() ->
 reconcile_action_noop_when_already_offline_test() ->
     State = state_with_presence(#{}),
     ?assertEqual(noop, reconcile_action(1, undefined, State)).
+
+reconcile_activity_only_changes_test() ->
+    Activities = [#{<<"name">> => <<"Fluxer">>, <<"type">> => 0}],
+    Current = dnd_presence(1),
+    Active = Current#{<<"activities">> => Activities},
+    State = state_with_presence(#{1 => Current}),
+    Tab = maps:get(member_presence, State),
+    try
+        ?assertEqual({replay, Active}, reconcile_action(1, Active, State)),
+        ?assertEqual(
+            [{1, Active, display_fields(Current)}], find_mismatches([1], #{1 => Active}, Tab)
+        ),
+        ets:insert(Tab, {1, Active}),
+        ?assertEqual(noop, reconcile_action(1, Active, State)),
+        ?assertEqual({replay, Current}, reconcile_action(1, Current, State)),
+        Stale = {1, Current, display_fields(Current)},
+        ?assertEqual(State, apply_mismatches([Stale], State)),
+        ?assertEqual(Active, guild_state_member:lookup_presence(Tab, 1))
+    after
+        ets:delete(Tab)
+    end.
+
+reconcile_hidden_activities_do_not_create_mismatches_test() ->
+    State = state_with_presence(#{}),
+    try
+        lists:foreach(
+            fun(Status) ->
+                Hidden = (status_presence(1, Status))#{
+                    <<"activities">> => [#{<<"name">> => <<"Private game">>, <<"type">> => 0}]
+                },
+                ?assertEqual(noop, reconcile_action(1, Hidden, State))
+            end,
+            [<<"offline">>, <<"invisible">>]
+        )
+    after
+        ets:delete(maps:get(member_presence, State))
+    end.
 
 connected_user_ids_list_test() ->
     State = #{connected_user_ids => sets:from_list([1, 2, 3])},
@@ -412,7 +456,11 @@ confirmed_mismatches_keeps_only_repeated_observations_test() ->
         {2, idle_presence(2), Offline},
         {3, idle_presence(3), Dnd}
     ],
-    ?assertEqual([hd(Second)], confirmed_mismatches(First, Second)).
+    ?assertEqual([hd(Second)], confirmed_mismatches(First, Second)),
+    Active = (dnd_presence(1))#{
+        <<"activities">> => [#{<<"name">> => <<"Fluxer">>, <<"type">> => 0}]
+    },
+    ?assertEqual([], confirmed_mismatches(First, [{1, Active, Offline}])).
 
 persistent_mismatches_confirms_across_two_reads_test() ->
     meck:new(presence_cache, [passthrough]),

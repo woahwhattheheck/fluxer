@@ -3,7 +3,7 @@
 -module(presence_payload).
 -typing([eqwalizer]).
 
--export([build/5]).
+-export([build/5, build/6]).
 
 -export_type([status/0, custom_status/0]).
 
@@ -12,14 +12,28 @@
 
 -spec build(map(), status(), boolean(), boolean(), custom_status()) -> map().
 build(UserData, Status, Mobile, Afk, CustomStatus) ->
+    build(UserData, Status, Mobile, Afk, CustomStatus, []).
+
+-spec build(map(), status(), boolean(), boolean(), custom_status(), term()) -> map().
+build(UserData, Status, Mobile, Afk, CustomStatus, Activities) ->
     StatusBin = ensure_status_binary(Status),
     #{
         <<"user">> => user_utils:normalize_user(UserData),
         <<"status">> => StatusBin,
         <<"mobile">> => Mobile,
         <<"afk">> => Afk,
-        <<"custom_status">> => custom_status_for(StatusBin, CustomStatus)
+        <<"custom_status">> => custom_status_for(StatusBin, CustomStatus),
+        <<"activities">> => activities_for(StatusBin, Activities)
     }.
+
+-spec activities_for(binary(), term()) -> [map()].
+activities_for(<<"offline">>, _Activities) -> [];
+activities_for(<<"invisible">>, _Activities) -> [];
+activities_for(Status, Activities) when
+    Status =:= <<"online">>; Status =:= <<"idle">>; Status =:= <<"dnd">>
+->
+    presence_activities:normalize(Activities);
+activities_for(_Status, _Activities) -> [].
 
 -spec ensure_status_binary(term()) -> binary().
 ensure_status_binary(online) -> <<"online">>;
@@ -120,6 +134,25 @@ build_keeps_malformed_expires_at_test() ->
     Live = #{<<"text">> => <<"hi">>, <<"expires_at">> => <<"not-a-date">>},
     Result = build(test_user(), online, false, false, Live),
     ?assertEqual(Live, maps:get(<<"custom_status">>, Result)).
+
+activity_payload_visible_and_hidden_statuses_test() ->
+    Activity = #{<<"name">> => <<"Game">>, <<"type">> => 0},
+    lists:foreach(
+        fun(Status) ->
+            Payload = build(test_user(), Status, false, false, null, [Activity]),
+            ?assertEqual([Activity], maps:get(<<"activities">>, Payload))
+        end,
+        [online, idle, dnd, <<"online">>, <<"idle">>, <<"dnd">>]
+    ),
+    lists:foreach(
+        fun(Status) ->
+            Payload = build(test_user(), Status, false, false, null, [Activity]),
+            ?assertEqual(<<"offline">>, maps:get(<<"status">>, Payload)),
+            ?assertEqual([], maps:get(<<"activities">>, Payload))
+        end,
+        [offline, invisible, <<"offline">>, <<"invisible">>]
+    ),
+    ?assertEqual([], maps:get(<<"activities">>, build(test_user(), online, false, false, null))).
 
 test_user() ->
     #{<<"id">> => <<"1">>, <<"username">> => <<"Test">>}.

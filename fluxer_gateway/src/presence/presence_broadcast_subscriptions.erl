@@ -275,7 +275,8 @@ send_offline_if_unsubscribed(Uid, Subscriptions, State) ->
                 <<"status">> => <<"offline">>,
                 <<"mobile">> => false,
                 <<"afk">> => false,
-                <<"custom_status">> => null
+                <<"custom_status">> => null,
+                <<"activities">> => []
             },
             notify_sessions_presence(Offline, State)
     end.

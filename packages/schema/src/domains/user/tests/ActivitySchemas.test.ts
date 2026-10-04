@@ -17,6 +17,7 @@ describe('ActivityResponse', () => {
 		const input = {
 			name: 'Activity',
 			type: 2,
+			application_id: '123456789',
 			details: 'Track',
 			state: 'Artist',
 			extra: 'discard',
@@ -26,11 +27,17 @@ describe('ActivityResponse', () => {
 		expect(ActivityResponse.parse(input)).toEqual({
 			name: 'Activity',
 			type: 2,
+			application_id: '123456789',
 			details: 'Track',
 			state: 'Artist',
 			timestamps: {start: 1791096000000, end: null},
 			assets: {large_image: 'artwork', large_text: 'Album'},
 		});
+	});
+
+	it.each([1791096000, 1791096000000])('preserves the producer timestamp %s without conversion', (start) => {
+		const input = {name: 'Activity', type: 0, timestamps: {start}};
+		expect(ActivityResponse.parse(input)).toEqual(input);
 	});
 
 	it.each([-1, 6, 0.5, 'playing', null, undefined])('rejects invalid type %s', (type) => {

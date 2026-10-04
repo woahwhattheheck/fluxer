@@ -180,6 +180,7 @@ build_session_data(Data, IdentifyData, Version, SocketPid, SessionId, UserDataMa
         version => Version,
         user_data => term_detach:detach(build_user_data(UserDataMap)),
         custom_status => DetachedCustomStatus,
+        activities => extract_activities(Presence),
         token_hash => utils:hash_token(maps:get(token, IdentifyData)),
         auth_session_id_hash => extract_auth_session_id_hash(Data),
         properties => term_detach:detach(Properties),
@@ -272,6 +273,12 @@ extract_afk(P) when is_map(P) ->
     is_truthy(map_utils:get_safe(P, <<"afk">>, false));
 extract_afk(_) ->
     false.
+
+-spec extract_activities(term()) -> [map()].
+extract_activities(Presence) when is_map(Presence) ->
+    presence_activities:normalize(maps:get(<<"activities">>, Presence, []));
+extract_activities(_) ->
+    [].
 
 -spec is_truthy(term()) -> boolean().
 is_truthy(true) -> true;

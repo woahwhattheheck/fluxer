@@ -21,6 +21,7 @@
     status := status(),
     afk := boolean(),
     mobile := boolean(),
+    activities => [map()],
     pid := pid(),
     mref := reference(),
     socket_pid := pid() | undefined
@@ -49,6 +50,7 @@ handle_session_connect(Request, Pid, State) ->
                 status => Status,
                 afk => Afk,
                 mobile => Mobile,
+                activities => request_activities(Request, #{}),
                 pid => Pid,
                 mref => Ref,
                 socket_pid => SocketPid
@@ -58,8 +60,9 @@ handle_session_connect(Request, Pid, State) ->
             SessionsData = presence_status:collect_sessions_for_replace(NewSessions),
             {reply, {ok, SessionsData}, NewState};
         Existing ->
+            Activities = request_activities(Request, Existing),
             {UpdatedSession, NewState0} = refresh_existing_session(
-                Existing, Pid, Status, Afk, Mobile, SocketPid, State
+                Existing, Pid, Status, Afk, Mobile, Activities, SocketPid, State
             ),
             NewSessions = Sessions#{SessionId => UpdatedSession},
             NewState = NewState0#{sessions => NewSessions},
@@ -68,15 +71,16 @@ handle_session_connect(Request, Pid, State) ->
     end.
 
 -spec refresh_existing_session(
-    session_entry(), pid(), status(), boolean(), boolean(), pid() | undefined, state()
+    session_entry(), pid(), status(), boolean(), boolean(), [map()], pid() | undefined, state()
 ) -> {session_entry(), state()}.
-refresh_existing_session(Existing, Pid, Status, Afk, Mobile, SocketPid, State) ->
+refresh_existing_session(Existing, Pid, Status, Afk, Mobile, Activities, SocketPid, State) ->
     {Ref, State1} = refresh_monitor(Existing, Pid, State),
     {
         Existing#{
             status => Status,
             afk => Afk,
             mobile => Mobile,
+            activities => Activities,
             pid => Pid,
             mref => Ref,
             socket_pid => SocketPid
@@ -108,8 +112,9 @@ handle_presence_update(Request, State) ->
             Mobile = normalize_boolean(
                 maps:get(mobile, Request, maps:get(mobile, Session, false))
             ),
+            Activities = request_activities(Request, Session),
             handle_session_presence_change(
-                SessionId, Session, Status, Afk, Mobile, Sessions, State
+                SessionId, Session, Status, Afk, Mobile, Activities, Sessions, State
             )
     end.
 
@@ -119,20 +124,34 @@ handle_presence_update(Request, State) ->
     status(),
     boolean(),
     boolean(),
+    [map()],
     sessions(),
     state()
 ) -> {noreply, state()}.
-handle_session_presence_change(SessionId, Session, Status, Afk, Mobile, Sessions, State) ->
-    case session_presence_changed(Session, Status, Afk, Mobile) of
+handle_session_presence_change(SessionId, Session, Status, Afk, Mobile, Activities, Sessions, State) ->
+    PresenceChanged = session_presence_changed(Session, Status, Afk, Mobile),
+    ActivitiesChanged = maps:get(activities, Session, []) =/= Activities,
+    case PresenceChanged orelse ActivitiesChanged of
         false ->
             {noreply, State};
         true ->
-            UpdatedSession = Session#{status => Status, afk => Afk, mobile => Mobile},
+            UpdatedSession = Session#{
+                status => Status, afk => Afk, mobile => Mobile, activities => Activities
+            },
             NewSessions = Sessions#{SessionId => UpdatedSession},
             NewState = State#{sessions => NewSessions},
-            dispatch_sessions_replace(NewState),
+            case PresenceChanged of
+                true -> dispatch_sessions_replace(NewState);
+                false -> ok
+            end,
             {noreply, NewState}
     end.
+
+-spec request_activities(map(), map()) -> [map()].
+request_activities(Request, Session) ->
+    presence_activities:normalize(
+        maps:get(activities, Request, maps:get(activities, Session, []))
+    ).
 
 -spec session_presence_changed(session_entry(), status(), boolean(), boolean()) -> boolean().
 session_presence_changed(Session, Status, Afk, Mobile) ->
@@ -320,6 +339,48 @@ handle_session_connect_existing_session_refreshes_status_test() ->
     [AllSession | _] = SessionsData,
     ?assertEqual(<<"dnd">>, maps:get(<<"status">>, AllSession)),
     ?assertEqual(false, maps:get(<<"mobile">>, AllSession)).
+
+activity_updates_preserve_omission_and_clear_explicitly_test() ->
+    flush_test_messages(),
+    Activity = #{<<"name">> => <<"Game">>, <<"type">> => 0},
+    SessionId = <<"activities-session">>,
+    Session = activity_test_session(SessionId),
+    State = #{sessions => #{SessionId => Session}},
+    Update = #{session_id => SessionId, status => online},
+    {noreply, Active} = handle_presence_update(Update#{activities => [Activity]}, State),
+    ?assertEqual([Activity], maps:get(activities, maps:get(SessionId, maps:get(sessions, Active)))),
+    ?assertEqual({noreply, Active}, handle_presence_update(Update, Active)),
+    {noreply, Cleared} = handle_presence_update(Update#{activities => null}, Active),
+    ?assertEqual([], maps:get(activities, maps:get(SessionId, maps:get(sessions, Cleared)))),
+    ?assertEqual({noreply, Cleared}, handle_presence_update(Update#{activities => []}, Cleared)),
+    ?assertEqual(
+        {noreply, Active},
+        handle_presence_update(Update#{session_id => <<"other">>, activities => []}, Active)
+    ),
+    %% The presence owner publishes activity changes separately; no redundant
+    %% status-only SESSIONS_REPLACE packet is needed for this sequence.
+    receive
+        {'$gen_cast', {dispatch, sessions_replace, _}} -> ?assert(false)
+    after 0 -> ok
+    end.
+
+activity_connect_omission_keeps_current_session_test() ->
+    Activity = #{<<"name">> => <<"Game">>, <<"type">> => 0},
+    SessionId = <<"activities-resume">>,
+    Session = (activity_test_session(SessionId))#{activities => [Activity]},
+    State = #{sessions => #{SessionId => Session}},
+    Request = #{session_id => SessionId, status => online},
+    {reply, {ok, _}, Resumed} = handle_session_connect(Request, self(), State),
+    ?assertEqual([Activity], maps:get(activities, maps:get(SessionId, maps:get(sessions, Resumed)))),
+    {reply, {ok, _}, Cleared} = handle_session_connect(Request#{activities => []}, self(), Resumed),
+    {reply, {ok, _}, LateResume} = handle_session_connect(Request, self(), Cleared),
+    ?assertEqual([], maps:get(activities, maps:get(SessionId, maps:get(sessions, LateResume)))).
+
+activity_test_session(SessionId) ->
+    #{
+        session_id => SessionId, status => online, afk => false, mobile => false,
+        pid => self(), mref => make_ref(), socket_pid => undefined
+    }.
 
 flush_test_messages() ->
     receive

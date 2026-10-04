@@ -206,7 +206,8 @@ build_presence_external(State) ->
         status => ExternalStatus,
         mobile => maps:get(<<"mobile">>, Payload, false),
         afk => maps:get(<<"afk">>, Payload, false),
-        custom_status => maps:get(<<"custom_status">>, Payload, null)
+        custom_status => maps:get(<<"custom_status">>, Payload, null),
+        activities => maps:get(<<"activities">>, Payload, [])
     },
     {Payload, CurrentExternal, ExternalStatus}.
 
@@ -235,7 +236,8 @@ build_presence_payload(State) ->
     Afk = presence_status:get_flattened_afk(Sessions),
     UserData = maps:get(user_data, State, #{}),
     CustomStatus = maps:get(custom_status, State, null),
-    presence_payload:build(UserData, Status, Mobile, Afk, CustomStatus).
+    Activities = presence_status:get_flattened_activities(Sessions),
+    presence_payload:build(UserData, Status, Mobile, Afk, CustomStatus, Activities).
 
 -spec dispatch_foreign_presence(user_id(), map(), state()) -> {noreply, state()}.
 dispatch_foreign_presence(TargetId, Payload, State) ->
@@ -321,6 +323,28 @@ expiry_timer_delivers_a_reconcile_cast_test() ->
 cancel_expiry_timer_ignores_non_references_test() ->
     ?assertEqual(ok, cancel_expiry_timer(undefined)),
     ?assertEqual(ok, cancel_expiry_timer(not_a_ref)).
+
+activity_only_changes_reach_presence_comparison_test() ->
+    Activity = #{<<"name">> => <<"Game">>, <<"type">> => 0},
+    Session = #{status => online, afk => false, mobile => false},
+    State = #{user_data => #{<<"id">> => <<"1">>}, custom_status => null,
+        sessions => #{<<"desktop">> => Session}},
+    {_BeforePayload, Before, _} = build_presence_external(State),
+    ActiveSession = Session#{activities => [Activity]},
+    ActiveState = State#{sessions => #{<<"desktop">> => ActiveSession}},
+    {Payload, Active, _} = build_presence_external(ActiveState),
+    ?assert(presence_changed(Before, Active)),
+    ?assert(presence_changed(Active, Before)),
+    ?assertEqual([Activity], maps:get(<<"activities">>, Payload)),
+    ?assertEqual({ok, Payload}, current_visible_presence(ActiveState)),
+    HiddenState = ActiveState#{sessions => #{<<"desktop">> => ActiveSession#{status => invisible}}},
+    {HiddenPayload, Hidden, _} = build_presence_external(HiddenState),
+    ?assertEqual([], maps:get(<<"activities">>, HiddenPayload)),
+    ?assertEqual(not_found, current_visible_presence(HiddenState)),
+    {_EmptyPayload, EmptyHidden, _} = build_presence_external(
+        HiddenState#{sessions => #{<<"desktop">> => Session#{status => invisible}}}
+    ),
+    ?assertNot(presence_changed(Hidden, EmptyHidden)).
 
 future_custom_status() ->
     ExpiresAt = calendar:system_time_to_rfc3339(

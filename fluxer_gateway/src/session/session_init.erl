@@ -218,6 +218,7 @@ extract_core_fields(
         user_id => UserId,
         user_data => UserData,
         custom_status => maps:get(custom_status, D, null),
+        activities => presence_activities:normalize(maps:get(activities, D, [])),
         version => Version,
         token_hash => TokenHash,
         auth_session_id_hash => AuthSessionIdHash,
@@ -476,6 +477,9 @@ build_state_clamps_replay_floor_to_seq_test() ->
 
 build_state_defaults_replay_floor_to_zero_test() ->
     ?assertEqual(0, maps:get(replay_floor, build_state(base_session_data(#{})))).
+
+build_state_defaults_legacy_session_activities_to_empty_test() ->
+    ?assertEqual([], maps:get(activities, build_state(base_session_data(#{})))).
 
 base_session_data(Ready) ->
     #{

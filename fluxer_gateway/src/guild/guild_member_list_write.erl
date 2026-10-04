@@ -126,12 +126,13 @@ presence_delta_is_inert(_OldPresence, _NewPresence, _OldMember, _NewMember) ->
 presence_change_resyncs_lists(OldPresence, NewPresence) ->
     member_list_presence_fields(OldPresence) =/= member_list_presence_fields(NewPresence).
 
--spec member_list_presence_fields(map()) -> {binary(), term(), term()}.
+-spec member_list_presence_fields(map()) -> {binary(), term(), term(), term()}.
 member_list_presence_fields(Presence) ->
     {
         maps:get(<<"status">>, Presence, <<"offline">>),
         maps:get(<<"custom_status">>, Presence, null),
-        maps:get(<<"mobile">>, Presence, false)
+        maps:get(<<"mobile">>, Presence, false),
+        maps:get(<<"activities">>, Presence, [])
     }.
 
 -spec find_member_in_state_data(user_id(), guild_state()) -> map() | undefined.
@@ -633,6 +634,10 @@ presence_change_resyncs_lists_on_status_custom_status_or_mobile_test() ->
     ?assert(presence_change_resyncs_lists(Online, Online#{<<"status">> => <<"idle">>})),
     ?assert(presence_change_resyncs_lists(Online, Online#{<<"custom_status">> => #{}})),
     ?assert(presence_change_resyncs_lists(Online, Online#{<<"mobile">> => true})),
+    Active = Online#{<<"activities">> => [#{<<"name">> => <<"Fluxer">>, <<"type">> => 0}]},
+    ?assert(presence_change_resyncs_lists(Online, Active)),
+    ?assert(presence_change_resyncs_lists(Active, Online#{<<"activities">> => []})),
+    ?assertNot(presence_change_resyncs_lists(Online, Online#{<<"activities">> => []})),
     ?assert(presence_change_resyncs_lists(#{}, Online)),
     ?assertNot(presence_change_resyncs_lists(Online, Online#{<<"afk">> => true})),
     ?assertNot(presence_change_resyncs_lists(#{}, #{<<"status">> => <<"offline">>})).

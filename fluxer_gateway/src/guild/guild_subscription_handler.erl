@@ -679,7 +679,11 @@ member_subscription_test_member(UserId, RoleIds) ->
     }.
 
 member_subscription_test_presence(UserId) ->
-    #{<<"status">> => <<"online">>, <<"user">> => #{<<"id">> => integer_to_binary(UserId)}}.
+    #{
+        <<"status">> => <<"online">>,
+        <<"user">> => #{<<"id">> => integer_to_binary(UserId)},
+        <<"activities">> => [#{<<"name">> => <<"Fluxer">>, <<"type">> => 0}]
+    }.
 
 member_subscription_test_state() ->
     GuildId = 42,
@@ -707,7 +711,12 @@ member_subscription_test_state() ->
         Tab,
         {23,
             presence_payload:build(
-                maps:get(<<"user">>, maps:get(23, Members)), <<"online">>, false, false, null
+                maps:get(<<"user">>, maps:get(23, Members)),
+                <<"online">>,
+                false,
+                false,
+                null,
+                maps:get(<<"activities">>, member_subscription_test_presence(23))
             )}
     ),
     Subs = lists:foldl(
@@ -798,6 +807,17 @@ update_member_subscriptions_matches_reference_test() ->
     ?assertEqual(Strip(Expected), Strip(Actual)),
     ?assertEqual(ExpectedDispatches, ActualDispatches),
     ?assertEqual(2, length(ActualDispatches)),
+    ?assertEqual(
+        [
+            {Id, maps:get(<<"activities">>, member_subscription_test_presence(Id))}
+         || Id <- [21, 23]
+        ],
+        lists:sort([
+            {maps:get(<<"id">>, maps:get(<<"user">>, Payload)),
+                maps:get(<<"activities">>, Payload)}
+         || {'$gen_cast', {dispatch, presence_update, Payload}} <- ActualDispatches
+        ])
+    ),
     ?assertEqual(
         [20, 21, 22, 23, 24, 25],
         lists:sort(

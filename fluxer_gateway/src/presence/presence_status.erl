@@ -7,6 +7,7 @@
     get_current_status/1,
     get_flattened_mobile/1,
     get_flattened_afk/1,
+    get_flattened_activities/1,
     collect_sessions_for_replace/1
 ]).
 
@@ -70,6 +71,17 @@ all_sessions_afk(Sessions) ->
 -spec is_session_afk(map()) -> boolean().
 is_session_afk(Session) ->
     maps:get(afk, Session, false).
+
+-spec get_flattened_activities(sessions()) -> [map()].
+get_flattened_activities(Sessions) ->
+    Activities = lists:append([
+        presence_activities:normalize(maps:get(activities, Session, []))
+     || Session <- maps:values(Sessions),
+        lists:member(maps:get(status, Session, offline), [online, idle, dnd])
+    ]),
+    %% Stable deduplication prevents another session or map traversal order from
+    %% producing repeated activity broadcasts. Hidden sessions never contribute.
+    presence_activities:normalize(lists:usort(Activities)).
 
 -spec collect_sessions_for_replace(sessions()) -> [map()].
 collect_sessions_for_replace(Sessions) ->
@@ -237,6 +249,21 @@ get_flattened_afk_mobile_overrides_test() ->
 
 get_flattened_afk_empty_test() ->
     ?assertEqual(false, get_flattened_afk(#{})).
+
+flattened_activities_exclude_hidden_and_deduplicate_test() ->
+    Game = #{<<"name">> => <<"Game">>, <<"type">> => 0},
+    Music = #{<<"name">> => <<"Music">>, <<"type">> => 2},
+    Hidden = #{<<"name">> => <<"Private game">>, <<"type">> => 0},
+    Sessions = #{
+        <<"desktop">> => #{status => online, afk => false, mobile => false, activities => [Game]},
+        <<"tablet">> => #{status => idle, afk => true, mobile => true, activities => [Game, Music]},
+        <<"hidden">> => #{status => invisible, afk => false, mobile => false, activities => [Hidden]},
+        <<"offline">> => #{status => offline, afk => false, mobile => false, activities => [Hidden]},
+        <<"legacy">> => #{status => dnd, afk => false, mobile => false}
+    },
+    ?assertEqual(lists:usort([Game, Music]), get_flattened_activities(Sessions)),
+    ?assertEqual([], get_flattened_activities(maps:with([<<"hidden">>, <<"offline">>], Sessions))),
+    ?assertEqual([], get_flattened_activities(#{})).
 
 collect_sessions_for_replace_test() ->
     Sessions = #{
