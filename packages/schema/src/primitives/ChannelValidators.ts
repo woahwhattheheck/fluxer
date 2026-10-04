@@ -25,6 +25,7 @@ export const ChannelTypeSchema = createInt32EnumType(
 		[ChannelTypes.GUILD_VOICE, 'GUILD_VOICE', 'A voice channel within a guild'],
 		[ChannelTypes.GROUP_DM, 'GROUP_DM', 'A group direct message between users'],
 		[ChannelTypes.GUILD_CATEGORY, 'GUILD_CATEGORY', 'A category that contains channels'],
+		[ChannelTypes.GUILD_PUBLIC_THREAD, 'GUILD_PUBLIC_THREAD', 'A public thread nested under a guild text channel'],
 		[ChannelTypes.GUILD_LINK, 'GUILD_LINK', 'A link channel for external resources'],
 		[ChannelTypes.DM_PERSONAL_NOTES, 'DM_PERSONAL_NOTES', 'Personal notes DM channel'],
 	],
