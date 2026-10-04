@@ -201,7 +201,7 @@ build_initial_state(PresenceData) ->
         sessions => #{},
         push_buffer => [],
         custom_status => maps:get(custom_status, PresenceData, null),
-        activities => maps:get(activities, PresenceData, null),
+        activities => presence_update:normalize_activities(maps:get(activities, PresenceData, null)),
         status => Status,
         guild_ids => presence_targets:map_from_ids(GuildIds),
         temporary_guild_ids => #{},
@@ -298,6 +298,26 @@ normalize_start_link(ignore) ->
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+
+build_initial_state_normalizes_activities_test() ->
+    Valid = #{<<"name">> => <<"Game">>, <<"type">> => 0},
+    Invalid = #{<<"name">> => <<"Bad">>, <<"type">> => 6},
+    State = build_initial_state(#{
+        user_id => 1,
+        user_data => #{},
+        status => online,
+        activities => [Invalid, Valid]
+    }),
+    ?assertEqual([Valid], maps:get(activities, State)).
+
+build_initial_state_clears_null_activities_test() ->
+    State = build_initial_state(#{
+        user_id => 1,
+        user_data => #{},
+        status => online,
+        activities => null
+    }),
+    ?assertEqual(null, maps:get(activities, State)).
 
 session_connect_pid_prefers_request_session_pid_test() ->
     Caller = self(),
