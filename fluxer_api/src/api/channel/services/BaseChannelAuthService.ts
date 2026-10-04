@@ -199,7 +199,7 @@ export abstract class BaseChannelAuthService {
 		const channelPermissions = await this.gatewayService.getUserPermissions({
 			guildId,
 			userId,
-			channelId: channel.id,
+			channelId: this.parentLookupChannelId(channel) ?? channel.id,
 		});
 		const hasPermission = async (permission: bigint): Promise<boolean> => {
 			const allowed = (channelPermissions & permission) === permission;
@@ -224,6 +224,7 @@ export abstract class BaseChannelAuthService {
 			this.options.validateNsfw &&
 			!skipNsfwValidation &&
 			(channel.type === ChannelTypes.GUILD_TEXT ||
+				channel.type === ChannelTypes.GUILD_PUBLIC_THREAD ||
 				channel.type === ChannelTypes.GUILD_VOICE ||
 				channel.type === ChannelTypes.GUILD_LINK) &&
 			requiresAgeVerification
