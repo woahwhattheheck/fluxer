@@ -35,6 +35,16 @@ const MANAGE_CHANNELS_PERMISSION_DESCRIPTION_DESCRIPTOR = msg({
 	comment:
 		'Permission description in the role/permission editor for the Manage Channels permission. Covers channel and category lifecycle operations.',
 });
+const CREATE_EVENTS_PERMISSION_DESCRIPTION_DESCRIPTOR = msg({
+	message: 'Create community events and edit events you created.',
+	comment:
+		'Permission description in the role/permission editor for the Create Events permission. The member can manage only events they created unless they also hold Manage Events.',
+});
+const MANAGE_EVENTS_PERMISSION_DESCRIPTION_DESCRIPTOR = msg({
+	message: 'Edit or delete events created by other members.',
+	comment:
+		'Permission description in the role/permission editor for the Manage Events permission. This is moderator-level authority over community events.',
+});
 const CHANGE_OWN_NICKNAME_PERMISSION_DESCRIPTION_DESCRIPTOR = msg({
 	message: 'Update your own nickname.',
 	comment:
@@ -367,6 +377,14 @@ const MANAGE_CHANNELS_DESCRIPTOR = msg({
 	message: 'Manage channels',
 	comment: 'Permission name: allows creating, editing, or deleting channels.',
 });
+const CREATE_EVENTS_DESCRIPTOR = msg({
+	message: 'Create events',
+	comment: 'Permission name: allows creating community events and editing events the member created.',
+});
+const MANAGE_EVENTS_DESCRIPTOR = msg({
+	message: 'Manage events',
+	comment: 'Permission name: allows editing or deleting events created by other members.',
+});
 const KICK_MEMBERS_DESCRIPTOR = msg({
 	message: 'Kick members',
 	comment: 'Permission name: allows removing members from a community.',
@@ -524,6 +542,8 @@ const PERMISSION_TITLE_DESCRIPTORS = new Map<bigint, MessageDescriptor>([
 	[Permissions.MANAGE_GUILD, MANAGE_COMMUNITY_DESCRIPTOR],
 	[Permissions.MANAGE_ROLES, MANAGE_ROLES_DESCRIPTOR],
 	[Permissions.MANAGE_CHANNELS, MANAGE_CHANNELS_DESCRIPTOR],
+	[Permissions.CREATE_EVENTS, CREATE_EVENTS_DESCRIPTOR],
+	[Permissions.MANAGE_EVENTS, MANAGE_EVENTS_DESCRIPTOR],
 	[Permissions.KICK_MEMBERS, KICK_MEMBERS_DESCRIPTOR],
 	[Permissions.BAN_MEMBERS, BAN_MEMBERS_DESCRIPTOR],
 	[Permissions.CREATE_INSTANT_INVITE, CREATE_INVITE_LINKS_DESCRIPTOR],
@@ -569,6 +589,8 @@ const PERMISSION_DESCRIPTION_DESCRIPTORS = new Map<bigint, MessageDescriptor>([
 	[Permissions.MANAGE_GUILD, MANAGE_COMMUNITY_PERMISSION_DESCRIPTION_DESCRIPTOR],
 	[Permissions.MANAGE_ROLES, MANAGE_ROLES_PERMISSION_DESCRIPTION_DESCRIPTOR],
 	[Permissions.MANAGE_CHANNELS, MANAGE_CHANNELS_PERMISSION_DESCRIPTION_DESCRIPTOR],
+	[Permissions.CREATE_EVENTS, CREATE_EVENTS_PERMISSION_DESCRIPTION_DESCRIPTOR],
+	[Permissions.MANAGE_EVENTS, MANAGE_EVENTS_PERMISSION_DESCRIPTION_DESCRIPTOR],
 	[Permissions.KICK_MEMBERS, KICK_MEMBERS_PERMISSION_DESCRIPTION_DESCRIPTOR],
 	[Permissions.BAN_MEMBERS, BAN_MEMBERS_PERMISSION_DESCRIPTION_DESCRIPTOR],
 	[Permissions.CREATE_INSTANT_INVITE, CREATE_INVITE_LINKS_PERMISSION_DESCRIPTION_DESCRIPTOR],
