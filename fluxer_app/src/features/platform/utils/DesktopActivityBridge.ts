@@ -2,6 +2,7 @@
 
 import LocalPresence from '@app/features/presence/state/LocalPresence';
 import {getElectronAPI} from '@app/features/ui/utils/NativeUtils';
+import {ActivityResponse} from '@fluxer/schema/src/domains/user/ActivitySchemas';
 
 /**
  * Desktop activity bridge.
@@ -19,7 +20,15 @@ export function initializeDesktopActivityBridge(): (() => void) | undefined {
 
 	const applyActivities = (activities: unknown): void => {
 		if (!active) return;
-		LocalPresence.setActivities(Array.isArray(activities) ? (activities as never[]) : null);
+		if (!Array.isArray(activities)) {
+			LocalPresence.setActivities(null);
+			return;
+		}
+		const parsed = activities.flatMap((item) => {
+			const result = ActivityResponse.safeParse(item);
+			return result.success ? [result.data] : [];
+		});
+		LocalPresence.setActivities(parsed.length > 0 ? parsed : activities.length === 0 ? [] : null);
 	};
 
 	const unsubscribe = electronApi.onActivitiesUpdated((activities) => {

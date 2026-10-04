@@ -272,7 +272,7 @@ function normalizeActivity(raw: unknown, pid: number): RpcActivity | null {
 		kind: 'rpc',
 		pid,
 		name: typeof activity.name === 'string' ? activity.name : '',
-		type: typeof activity.type === 'number' ? activity.type : 0,
+		...(typeof activity.type === 'number' ? {type: activity.type} : {}),
 		...(typeof activity.state === 'string' ? {state: activity.state} : {state: null}),
 		...(typeof activity.details === 'string' ? {details: activity.details} : {details: null}),
 		...(assets ? {assets} : {assets: null}),

@@ -175,7 +175,9 @@ export function mergeActivities(
 		// Derive a copy: a later scan must be able to retire an inferred name.
 		return name ? {...activity, name} : activity;
 	});
-	const merged: Array<DesktopActivity> = [...resolvedRpc];
+	const merged: Array<DesktopActivity> = resolvedRpc.filter(
+		(activity) => typeof activity.type === 'number',
+	);
 	const rpcNames = new Set(resolvedRpc.map((activity) => activity.name.toLowerCase()));
 	const representedPids = new Set(
 		resolvedRpc
@@ -190,7 +192,8 @@ export function mergeActivities(
 			const {processIds, ...visibleActivity} = activity;
 			if (
 				rpcNames.has(activity.name.toLowerCase()) ||
-				processIds?.some((pid) => representedPids.has(pid))
+				processIds?.some((pid) => representedPids.has(pid)) ||
+				typeof visibleActivity.type !== 'number'
 			) continue;
 			merged.push(visibleActivity);
 		} else {

@@ -3,6 +3,7 @@
 /**
  * Activity kinds reported by detection sources. Mirrors the gateway presence
  * activity `type` field so the renderer can forward payloads verbatim.
+ * Integers 0 through 5 are the types already declared by the shared schema.
  */
 export const ActivityTypes = {
 	PLAYING: 0,
@@ -11,7 +12,11 @@ export const ActivityTypes = {
 	COMPETING: 5,
 } as const;
 
-export type ActivityTypeValue = (typeof ActivityTypes)[keyof typeof ActivityTypes];
+export type ActivityTypeValue = 0 | 1 | 2 | 3 | 4 | 5;
+
+export function isDeclaredActivityType(value: unknown): value is ActivityTypeValue {
+	return value === 0 || value === 1 || value === 2 || value === 3 || value === 4 || value === 5;
+}
 
 /** A process observation handed to the detectables matcher. */
 export interface DetectedProcess {
@@ -32,6 +37,8 @@ export interface DetectableApplication {
 	readonly icon: string;
 	readonly executables: Array<DetectableExecutable>;
 	readonly presence_assets?: Record<string, string>;
+	/** Copied from the catalogue when already present; never assigned by matching. */
+	readonly type?: ActivityTypeValue;
 }
 
 export interface DetectableExecutable {
@@ -40,11 +47,11 @@ export interface DetectableExecutable {
 	readonly arguments?: string;
 }
 
-/** The activity a matched detectable produces. */
+/** A catalogue match. Type is present only when the catalogue already had one. */
 export interface DetectedApplicationActivity {
 	readonly kind: 'detected';
 	readonly name: string;
-	readonly type: ActivityTypeValue;
+	readonly type?: ActivityTypeValue;
 	readonly icon?: string;
 	/** Local merge metadata; removed before activities leave ActivityManager. */
 	readonly processIds?: Array<number>;
@@ -55,7 +62,7 @@ export interface RpcActivity {
 	readonly kind: 'rpc';
 	readonly pid: number;
 	readonly name: string;
-	readonly type: number;
+	readonly type?: number;
 	readonly state?: string | null;
 	readonly details?: string | null;
 	readonly assets?: {

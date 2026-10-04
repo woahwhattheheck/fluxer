@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type {
-	DetectableApplication,
-	DetectableExecutable,
-	DetectedApplicationActivity,
-	DetectedProcess,
+import {
+	isDeclaredActivityType,
+	type DetectableApplication,
+	type DetectableExecutable,
+	type DetectedApplicationActivity,
+	type DetectedProcess,
 } from '@electron/common/RpcActivityTypes';
 
 /**
@@ -88,10 +89,11 @@ export function matchDetectableApplications(
 			}
 		}
 		if (!hasMatch) continue;
+		const type = isDeclaredActivityType(application.type) ? application.type : undefined;
 		matched.set(application.name, {
 			kind: 'detected',
 			name: application.name,
-			type: 0,
+			...(type === undefined ? {} : {type}),
 			...(application.icon ? {icon: application.icon} : {}),
 			...(processIds.size > 0 ? {processIds: [...processIds]} : {}),
 		});
@@ -128,6 +130,7 @@ export function parseDetectables(payload: unknown): Array<DetectableApplication>
 			executables,
 			...(Array.isArray(candidate.aliases) ? {aliases: candidate.aliases} : {}),
 			...(candidate.presence_assets ? {presence_assets: candidate.presence_assets} : {}),
+			...(isDeclaredActivityType(candidate.type) ? {type: candidate.type} : {}),
 		});
 	}
 	return applications;

@@ -57,7 +57,7 @@ describe("matchDetectableApplications", () => {
         [{ name: "minecraft.exe", executablePath }],
         "win32"
       );
-      assert.deepEqual(matches, [{ kind: "detected", name: "Minecraft", type: 0, icon: "minecraft.png" }]);
+      assert.deepEqual(matches, [{ kind: "detected", name: "Minecraft", icon: "minecraft.png" }]);
     }
   });
   test("path suffix rule rejects an unknown path and unrelated same-basename paths", () => {
@@ -177,7 +177,7 @@ describe("detected process identities", () => {
       { name: "new.exe", pid: 12 }
     ], "win32");
     assert.deepEqual(matches, [{
-      kind: "detected", name: "One Game", type: 0, icon: "new.png", processIds: [11, 12]
+      kind: "detected", name: "One Game", icon: "new.png", processIds: [11, 12]
     }]);
   });
   test("PID-less and invalid-PID matches preserve their legacy activity shape", () => {
@@ -185,7 +185,7 @@ describe("detected process identities", () => {
     const matches = matchDetectableApplications(DETECTABLES, invalid.map((pid) => ({
       name: "osu!.exe", ...(pid === undefined ? {} : { pid })
     })), "win32");
-    assert.deepEqual(matches, [{ kind: "detected", name: "osu!", type: 0, icon: "osu.png" }]);
+    assert.deepEqual(matches, [{ kind: "detected", name: "osu!", icon: "osu.png" }]);
   });
 });
 
@@ -209,5 +209,29 @@ describe("parseDetectables", () => {
   test("non-array payload yields empty list", () => {
     assert.equal(parseDetectables(null).length, 0);
     assert.equal(parseDetectables({}).length, 0);
+  });
+  test("keeps a type already present on the catalogue record", () => {
+    const parsed = parseDetectables([{
+      name: "Typed Game",
+      icon: "typed.png",
+      type: 2,
+      executables: [{ name: "typed.exe", os: "win32" }]
+    }]);
+    assert.deepEqual(parsed[0].type, 2);
+    assert.deepEqual(
+      matchDetectableApplications(parsed, [{ name: "typed.exe" }], "win32"),
+      [{ kind: "detected", name: "Typed Game", type: 2, icon: "typed.png" }]
+    );
+  });
+  test("does not invent a type when the catalogue record has none", () => {
+    const parsed = parseDetectables([{
+      name: "Untyped Game",
+      icon: "untyped.png",
+      executables: [{ name: "untyped.exe", os: "win32" }]
+    }]);
+    assert.equal(Object.hasOwn(parsed[0], "type"), false);
+    const matches = matchDetectableApplications(parsed, [{ name: "untyped.exe" }], "win32");
+    assert.deepEqual(matches, [{ kind: "detected", name: "Untyped Game", icon: "untyped.png" }]);
+    assert.equal(Object.hasOwn(matches[0], "type"), false);
   });
 });

@@ -107,7 +107,8 @@ test('an old catalogue load cannot overwrite a restarted manager or arm a second
 	t.after(() => clearInterval(timer));
 	oldCatalogue.resolve(catalogue('Old'));
 	await oldStart;
-	assert.deepEqual(manager.currentActivities().map(({name}) => name), ['New']);
+	assert.deepEqual(manager.detectables.map(({name}) => name), ['New']);
+	assert.deepEqual(manager.currentActivities(), []);
 	assert.equal(manager.pollTimer, timer);
 });
 

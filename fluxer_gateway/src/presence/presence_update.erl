@@ -6,6 +6,7 @@
 -export([
     maybe_handle_custom_status/2,
     maybe_handle_activities/2,
+    normalize_activities/1,
     handle_user_settings_update/2,
     handle_user_update_event/2,
     handle_message_create_event/2,
@@ -42,36 +43,30 @@ maybe_handle_custom_status(Request, State) ->
 
 -spec maybe_handle_activities(map(), state()) -> {map(), state()}.
 maybe_handle_activities(Request, State) ->
-    case maps:find(<<"activities">>, Request) of
-        error ->
-            {Request, State};
-        {ok, null} ->
-            {Request#{<<"activities">> => null}, State#{activities := null}};
+    case maps:find(activities, Request) of
         {ok, Activities} when is_list(Activities) ->
-            Normalized = normalize_activities(Activities),
-            {Request#{<<"activities">> => Normalized}, State#{activities := Normalized}};
-        _ ->
-            {Request, State}
+            {Request, State#{activities := Activities}};
+        {ok, _} ->
+            {Request, State};
+        error ->
+            case maps:find(<<"activities">>, Request) of
+                error ->
+                    {Request, State};
+                {ok, null} ->
+                    {Request#{<<"activities">> => null}, State#{activities := null}};
+                {ok, Activities} when is_list(Activities) ->
+                    Normalized = normalize_activities(Activities),
+                    {Request#{<<"activities">> => Normalized}, State#{activities := Normalized}};
+                _ ->
+                    {Request, State}
+            end
     end.
 
--spec normalize_activities([term()]) -> [map()] | null.
+-spec normalize_activities(term()) -> [map()] | null.
 normalize_activities(Activities) ->
-    Valid = [A || A <- Activities, is_map(A), is_valid_activity(A)],
-    case Valid of
+    case presence_activities:normalize(Activities) of
         [] -> null;
-        List -> lists:sublist(lists:uniq(List), 5)
-    end.
-
--spec is_valid_activity(map()) -> boolean().
-is_valid_activity(Activity) ->
-    case maps:get(<<"name">>, Activity, undefined) of
-        Name when is_binary(Name), byte_size(Name) > 0, byte_size(Name) =< 128 ->
-            case maps:get(<<"type">>, Activity, undefined) of
-                Type when is_integer(Type), Type >= 0, Type =< 5 -> true;
-                _ -> false
-            end;
-        _ ->
-            false
+        List -> lists:sublist(List, 5)
     end.
 
 -spec handle_user_settings_update(map(), state()) -> state().
@@ -383,6 +378,18 @@ parse_snowflake(FieldName, Value) ->
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+
+-spec is_valid_activity(map()) -> boolean().
+is_valid_activity(Activity) ->
+    case maps:get(<<"name">>, Activity, undefined) of
+        Name when is_binary(Name), byte_size(Name) > 0, byte_size(Name) =< 128 ->
+            case maps:get(<<"type">>, Activity, undefined) of
+                Type when is_integer(Type), Type >= 0, Type =< 5 -> true;
+                _ -> false
+            end;
+        _ ->
+            false
+    end.
 
 normalize_activities_valid_test() ->
     Activities = [#{<<"name">> => <<"Minecraft">>, <<"type">> => 0}],

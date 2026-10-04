@@ -1,26 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type {GatewayCustomStatusPayload} from '@app/features/user/state/CustomStatus';
+import type {ActivityResponse} from '@fluxer/schema/src/domains/user/ActivitySchemas';
 import type {UserPartial} from '@fluxer/schema/src/domains/user/UserResponseSchemas';
 
 /** Activity attached to a presence update (game / music / software). */
-export interface GatewayUserActivity {
-	readonly name: string;
-	readonly type: number;
-	readonly state?: string | null;
-	readonly details?: string | null;
+export type GatewayUserActivity = ActivityResponse & {
 	readonly icon?: string | null;
-	readonly assets?: {
-		readonly large_image?: string | null;
-		readonly large_text?: string | null;
-		readonly small_image?: string | null;
-		readonly small_text?: string | null;
-	} | null;
-	readonly timestamps?: {
-		readonly start?: number | null;
-		readonly end?: number | null;
-	} | null;
-}
+};
 
 export interface PresenceRecord {
 	readonly guild_id?: string | null;

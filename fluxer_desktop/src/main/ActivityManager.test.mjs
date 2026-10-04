@@ -71,6 +71,19 @@ describe('mergeActivities', () => {
 	test('empty inputs yield empty list', () => {
 		assert.equal(mergeActivities([], []).length, 0);
 	});
+
+	test('detected matches without a catalogue type are not emitted as presence', () => {
+		const detected = {kind: 'detected', name: 'Minecraft', processIds: [42]};
+		assert.deepEqual(mergeActivities([], [detected]), []);
+		assert.deepEqual(mergeActivities([rpcActivity('RPC Game', 1)], [detected]), [rpcActivity('RPC Game', 1)]);
+	});
+
+	test('detected matches keep a type already present on the catalogue record', () => {
+		assert.deepEqual(
+			mergeActivities([], [{kind: 'detected', name: 'Album', type: 2}]),
+			[{kind: 'detected', name: 'Album', type: 2}],
+		);
+	});
 });
 
 describe('catalogue process identity merge', () => {
@@ -172,9 +185,9 @@ describe('ActivityManager lifecycle', () => {
 		await manager.start();
 		try {
 			assert.equal(emissions.length, 1);
-			assert.equal(emissions[0].length, 1);
-			assert.equal(emissions[0][0].name, 'Minecraft');
-			assert.equal(emissions[0][0].kind, 'detected');
+			assert.deepEqual(emissions[0], []);
+			assert.equal(manager.detectables[0].name, 'Minecraft');
+			assert.equal(Object.hasOwn(manager.detectables[0], 'type'), false);
 		} finally {
 			await manager.stop();
 		}
@@ -210,9 +223,10 @@ async function startWithCatalogue(t, contents, processes = [{name: bundledProces
 describe('ActivityManager catalogue fallback', () => {
 	test('fresh install detects a bundled application without creating a user file', async (t) => {
 		const {manager, detectablesPath} = await startWithCatalogue(t);
+		assert.deepEqual(manager.currentActivities(), []);
 		assert.deepEqual(
-			manager.currentActivities().map((activity) => activity.name),
-			['osu!'],
+			manager.detectables.map((application) => application.name),
+			['Minecraft', 'osu!'],
 		);
 		await assert.rejects(readFile(detectablesPath, 'utf8'), {code: 'ENOENT'});
 	});
@@ -224,9 +238,10 @@ describe('ActivityManager catalogue fallback', () => {
 	]) {
 		test(`${name} uses the bundled catalogue without overwriting the file`, async (t) => {
 			const {manager, detectablesPath} = await startWithCatalogue(t, contents);
+			assert.deepEqual(manager.currentActivities(), []);
 			assert.deepEqual(
-				manager.currentActivities().map((activity) => activity.name),
-				['osu!'],
+				manager.detectables.map((application) => application.name),
+				['Minecraft', 'osu!'],
 			);
 			assert.equal(await readFile(detectablesPath, 'utf8'), contents);
 		});
@@ -244,8 +259,9 @@ describe('ActivityManager catalogue fallback', () => {
 			{name: bundledProcessName},
 			{name: 'custom-game'},
 		]);
+		assert.deepEqual(manager.currentActivities(), []);
 		assert.deepEqual(
-			manager.currentActivities().map((activity) => activity.name),
+			manager.detectables.map((application) => application.name),
 			['Custom Game'],
 		);
 		assert.equal(await readFile(detectablesPath, 'utf8'), contents);
