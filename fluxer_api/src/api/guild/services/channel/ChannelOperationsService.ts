@@ -33,7 +33,7 @@ import {InputValidationError} from '@fluxer/errors/src/domains/core/InputValidat
 import {MissingPermissionsError} from '@fluxer/errors/src/domains/core/MissingPermissionsError';
 import {ResourceLockedError} from '@fluxer/errors/src/domains/core/ResourceLockedError';
 import {MaxGuildChannelsError} from '@fluxer/errors/src/domains/guild/MaxGuildChannelsError';
-import type {ChannelCreateRequest} from '@fluxer/schema/src/domains/channel/ChannelRequestSchemas';
+import type {ChannelCreateRequest, ThreadCreateRequest} from '@fluxer/schema/src/domains/channel/ChannelRequestSchemas';
 import type {ChannelResponse} from '@fluxer/schema/src/domains/channel/ChannelSchemas';
 import {
 	computeChannelMoveBlockIds,
@@ -55,6 +55,91 @@ export class ChannelOperationsService {
 		private readonly guildAuditLogService: GuildAuditLogService,
 		private readonly limitConfigService: LimitConfigService,
 	) {}
+
+	async createPublicThread(params: {
+		userId: UserID;
+		parentChannel: Channel;
+		data: ThreadCreateRequest;
+		requestCache: RequestCache;
+	}): Promise<ChannelResponse> {
+		const guildId = params.parentChannel.guildId;
+		if (!guildId) {
+			throw InputValidationError.fromCode('channel_id', ValidationErrorCodes.INVALID_CHANNEL_ID);
+		}
+		await this.ensureGuildHasCapacity(guildId);
+		const permissionOverwrites = new Map(
+			Array.from(params.parentChannel.permissionOverwrites.entries()).map(([targetId, overwrite]) => [
+				targetId,
+				overwrite.toPermissionOverwrite(),
+			]),
+		);
+		const channel = await this.channelRepository.upsert({
+			channel_id: createChannelID(await this.snowflakeService.generate()),
+			guild_id: guildId,
+			type: ChannelTypes.GUILD_PUBLIC_THREAD,
+			name: params.data.name,
+			topic: null,
+			icon_hash: null,
+			url: null,
+			parent_id: params.parentChannel.id,
+			position: params.parentChannel.position,
+			owner_id: params.userId,
+			recipient_ids: new Set([params.userId]),
+			nsfw: null,
+			content_warning_level: ContentWarningLevel.INHERIT,
+			content_warning_text: null,
+			rate_limit_per_user: 0,
+			bitrate: null,
+			user_limit: null,
+			voice_connection_limit: null,
+			rtc_region: null,
+			last_message_id: null,
+			last_pin_timestamp: null,
+			permission_overwrites: permissionOverwrites,
+			nicks: null,
+			soft_deleted: false,
+			indexed_at: null,
+			version: 1,
+		});
+		await this.dispatchChannelCreate({guildId, channel, requestCache: params.requestCache});
+		await this.recordAuditLog({
+			guildId,
+			userId: params.userId,
+			action: AuditLogActionType.CHANNEL_CREATE,
+			targetId: channel.id,
+			metadata: {name: channel.name ?? '', type: channel.type.toString()},
+			changes: this.guildAuditLogService.computeChanges(null, ChannelHelpers.serializeChannelForAudit(channel)),
+		});
+		return mapChannelToResponse({
+			channel,
+			currentUserId: params.userId,
+			userCacheService: this.userCacheService,
+			requestCache: params.requestCache,
+		});
+	}
+
+	async updatePublicThreadMembership(params: {
+		thread: Channel;
+		userId: UserID;
+		joined: boolean;
+		requestCache: RequestCache;
+	}): Promise<void> {
+		const guildId = params.thread.guildId;
+		if (!guildId || params.thread.type !== ChannelTypes.GUILD_PUBLIC_THREAD) {
+			throw InputValidationError.fromCode('channel_id', ValidationErrorCodes.INVALID_CHANNEL_ID);
+		}
+		const recipientIds = new Set(params.thread.recipientIds);
+		if (params.joined) {
+			recipientIds.add(params.userId);
+		} else {
+			recipientIds.delete(params.userId);
+		}
+		const channel = await this.channelRepository.upsert({
+			...params.thread.toRow(),
+			recipient_ids: recipientIds.size > 0 ? recipientIds : null,
+		});
+		await this.dispatchChannelUpdate({guildId, channel, requestCache: params.requestCache});
+	}
 
 	async createChannel(
 		params: {
@@ -574,6 +659,27 @@ export class ChannelOperationsService {
 		await this.gatewayService.dispatchGuild({
 			guildId,
 			event: 'CHANNEL_CREATE',
+			data: await mapChannelToResponse({
+				channel,
+				currentUserId: null,
+				userCacheService: this.userCacheService,
+				requestCache,
+			}),
+		});
+	}
+
+	private async dispatchChannelUpdate({
+		guildId,
+		channel,
+		requestCache,
+	}: {
+		guildId: GuildID;
+		channel: Channel;
+		requestCache: RequestCache;
+	}): Promise<void> {
+		await this.gatewayService.dispatchGuild({
+			guildId,
+			event: 'CHANNEL_UPDATE',
 			data: await mapChannelToResponse({
 				channel,
 				currentUserId: null,
