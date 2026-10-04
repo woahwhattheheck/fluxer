@@ -10,38 +10,64 @@ const PROCESS_QUERY_MAX_BUFFER_BYTES = 4 * 1024 * 1024;
 /**
  * Cross-platform process enumeration for activity detection.
  *
- * Windows: `wmic process get Name,CommandLine,ProcessId` (command line needed
- * for shared-runtime rules such as Minecraft on `javaw.exe`). wmic is
- * deprecated but present on every supported Windows release; PowerShell
- * `Get-CimInstance` is the fallback when wmic is absent.
+ * Windows: PowerShell `Get-CimInstance` supplies the executable path and
+ * command line (needed for shared-runtime rules such as Minecraft on
+ * `javaw.exe`).
  *
  * POSIX: `ps -axo pid=,comm=,args=` gives name and full command line.
  */
 
+function parseCsvRows(stdout: string): Array<Array<string>> {
+	const rows: Array<Array<string>> = [];
+	let row: Array<string> = [];
+	let cell = '';
+	let quoted = false;
+	for (let index = 0; index < stdout.length; index++) {
+		const character = stdout[index];
+		if (character === '"') {
+			if (quoted && stdout[index + 1] === '"') {
+				cell += '"';
+				index++;
+			} else {
+				quoted = !quoted;
+			}
+		} else if (!quoted && (character === ',' || character === '\r' || character === '\n')) {
+			row.push(cell);
+			cell = '';
+			if (character !== ',') {
+				rows.push(row);
+				row = [];
+				if (character === '\r' && stdout[index + 1] === '\n') index++;
+			}
+		} else {
+			cell += character;
+		}
+	}
+	if (cell || row.length > 0) {
+		row.push(cell);
+		rows.push(row);
+	}
+	return rows;
+}
+
 function parseWindowsWmicCsv(stdout: string): Array<DetectedProcess> {
 	const processes: Array<DetectedProcess> = [];
-	const lines = stdout.split(/\r?\n/);
-	if (lines.length === 0) return processes;
-	// wmic renders CSV cells padded with spaces around every value.
-	const clean = (value: string | undefined): string => (value ?? '').trim().replace(/^"|"$/g, '');
-	const header = lines[0].split(',').map((cell) => clean(cell));
+	const [headerRow, ...rows] = parseCsvRows(stdout);
+	if (!headerRow) return processes;
+	const header = headerRow.map((cell) => cell.trim());
 	const nameIndex = header.indexOf('Name');
 	const commandLineIndex = header.indexOf('CommandLine');
-	const pidIndex = header.indexOf('ProcessId');
+	const executablePathIndex = header.indexOf('ExecutablePath');
 	if (nameIndex === -1) return processes;
-	for (const line of lines.slice(1)) {
-		if (!line.trim()) continue;
-		// wmic never quotes commas inside CSV cells, so split conservatively:
-		// cells are fixed by header order; command line is the remainder join.
-		const cells = line.split(',').map(clean);
-		const name = cells[nameIndex];
+	for (const cells of rows) {
+		const name = cells[nameIndex]?.trim();
 		if (!name) continue;
-		const commandLine = commandLineIndex >= 0 ? cells.slice(commandLineIndex).join(',') : undefined;
-		const pid = pidIndex >= 0 ? Number.parseInt(cells[pidIndex] ?? '', 10) : Number.NaN;
+		const commandLine = commandLineIndex >= 0 ? cells[commandLineIndex]?.trim() : undefined;
+		const executablePath = executablePathIndex >= 0 ? cells[executablePathIndex]?.trim() : undefined;
 		processes.push({
 			name: name.toLowerCase(),
 			...(commandLine ? {commandLine: commandLine.toLowerCase()} : {}),
-			...(Number.isFinite(pid) ? {} : {}),
+			...(executablePath ? {executablePath} : {}),
 		});
 	}
 	return processes;
@@ -55,7 +81,7 @@ async function getWindowsProcesses(): Promise<Array<DetectedProcess>> {
 				'-NoProfile',
 				'-NonInteractive',
 				'-Command',
-				'Get-CimInstance Win32_Process | Select-Object Name,CommandLine,ProcessId | ConvertTo-Csv -NoTypeInformation',
+				'Get-CimInstance Win32_Process | Select-Object Name,CommandLine,ExecutablePath,ProcessId | ConvertTo-Csv -NoTypeInformation',
 			],
 			{windowsHide: true, maxBuffer: PROCESS_QUERY_MAX_BUFFER_BYTES},
 		);
@@ -74,7 +100,11 @@ function parsePosixPs(stdout: string): Array<DetectedProcess> {
 		if (!command) continue;
 		const name = command.includes('/') ? command.slice(command.lastIndexOf('/') + 1) : command;
 		const commandLine = args?.trim() ? `${command} ${args.trim()}` : command;
-		processes.push({name: name.toLowerCase(), commandLine: commandLine.toLowerCase()});
+		processes.push({
+			name: name.toLowerCase(),
+			commandLine: commandLine.toLowerCase(),
+			...(command.includes('/') ? {executablePath: command} : {}),
+		});
 	}
 	return processes;
 }

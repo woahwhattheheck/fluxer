@@ -50,10 +50,66 @@ describe("matchDetectableApplications", () => {
     const matches = matchDetectableApplications(DETECTABLES, [{ name: "osu!.exe" }], "linux");
     assert.equal(matches.length, 0);
   });
-  test("path suffix rule matches bare basename", () => {
-    const matches = matchDetectableApplications(DETECTABLES, [{ name: "minecraft.exe" }], "win32");
-    assert.equal(matches.length, 1);
-    assert.equal(matches[0].name, "Minecraft");
+  test("path suffix rule matches the normalized executable path without exposing it", () => {
+    for (const executablePath of ["C:/Games/content/minecraft.exe", "C:\\Games\\Content\\Minecraft.EXE"]) {
+      const matches = matchDetectableApplications(
+        DETECTABLES,
+        [{ name: "minecraft.exe", executablePath }],
+        "win32"
+      );
+      assert.deepEqual(matches, [{ kind: "detected", name: "Minecraft", type: 0, icon: "minecraft.png" }]);
+    }
+  });
+  test("path suffix rule rejects an unknown path and unrelated same-basename paths", () => {
+    for (const executablePath of [undefined, "C:/Other/minecraft.exe", "C:/Games/notcontent/minecraft.exe"]) {
+      const matches = matchDetectableApplications(
+        DETECTABLES,
+        [{ name: "minecraft.exe", ...(executablePath ? { executablePath } : {}) }],
+        "win32"
+      );
+      assert.equal(matches.length, 0, `unexpected suffix match for ${executablePath}`);
+    }
+  });
+  test("bare-name rules still match when the executable path is different or unavailable", () => {
+    const applications = [{ name: "Minecraft", executables: [{ name: "minecraft.exe", os: "win32" }] }];
+    for (const executablePath of [undefined, "C:/Games/content/minecraft.exe", "C:/Other/minecraft.exe"]) {
+      const matches = matchDetectableApplications(
+        applications,
+        [{ name: "minecraft.exe", ...(executablePath ? { executablePath } : {}) }],
+        "win32"
+      );
+      assert.equal(matches.length, 1);
+    }
+  });
+  test("shared-runtime path rules require both the executable suffix and arguments", () => {
+    const applications = [{
+      name: "Minecraft",
+      executables: [{ name: ">runtime/javaw.exe", os: "win32", arguments: "net.minecraft.client.main.Main" }]
+    }];
+    const process = {
+      name: "javaw.exe",
+      executablePath: "C:\\Games\\runtime\\javaw.exe",
+      commandLine: '"C:\\Games\\runtime\\javaw.exe" net.minecraft.client.main.Main'
+    };
+    assert.equal(matchDetectableApplications(applications, [process], "win32").length, 1);
+    for (const changed of [
+      { executablePath: "C:/Other/javaw.exe" },
+      { executablePath: undefined },
+      { commandLine: "javaw.exe -jar server.jar" }
+    ]) {
+      assert.equal(matchDetectableApplications(applications, [{ ...process, ...changed }], "win32").length, 0);
+    }
+    const missingArguments = [{ name: "Minecraft", executables: [{ name: ">runtime/javaw.exe", os: "win32" }] }];
+    assert.equal(matchDetectableApplications(missingArguments, [process], "win32").length, 0);
+  });
+  test("ordinary path rules retain their optional argument discriminator", () => {
+    const applications = [{
+      name: "Minecraft",
+      executables: [{ name: "content/minecraft.exe", os: "win32", arguments: "--minecraft" }]
+    }];
+    const process = { name: "minecraft.exe", executablePath: "C:/Games/content/minecraft.exe" };
+    assert.equal(matchDetectableApplications(applications, [{ ...process, commandLine: "--MINECRAFT" }], "win32").length, 1);
+    assert.equal(matchDetectableApplications(applications, [process], "win32").length, 0);
   });
   test("runtime rule requires the arguments substring", () => {
     const rule = [{ name: "javaw.exe", commandLine: '"c:\\java\\javaw.exe" net.minecraft.client.main.Main --arg' }];

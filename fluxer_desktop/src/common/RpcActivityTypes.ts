@@ -17,6 +17,8 @@ export type ActivityTypeValue = (typeof ActivityTypes)[keyof typeof ActivityType
 export interface DetectedProcess {
 	/** Lowercased executable name, e.g. `minecraft.windows.exe`. */
 	readonly name: string;
+	/** Executable path when available, used only for path-suffix detection rules. */
+	readonly executablePath?: string;
 	/** Full command line when available, used for `>` runtime rules. */
 	readonly commandLine?: string;
 }

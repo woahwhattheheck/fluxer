@@ -23,12 +23,6 @@ export function normalizeExecutableName(value: string): string {
 	return value.trim().toLowerCase();
 }
 
-/** Extract the basename of a posix-style path suffix rule, e.g. `content/minecraft.exe`. */
-function executableRuleBasename(rule: string): string {
-	const slash = rule.lastIndexOf('/');
-	return slash === -1 ? rule : rule.slice(slash + 1);
-}
-
 function isRuntimeRule(rule: string): boolean {
 	return rule.startsWith(RUNTIME_PREFIX);
 }
@@ -38,9 +32,6 @@ function stripRuntimePrefix(rule: string): string {
 }
 
 function matchesPathSuffix(executablePath: string, rule: string): boolean {
-	if (!rule.includes('/')) {
-		return executablePath === rule;
-	}
 	return executablePath.endsWith(`/${rule}`) || executablePath === rule;
 }
 
@@ -48,19 +39,18 @@ function ruleMatchesProcess(rule: DetectableExecutable, process: DetectedProcess
 	const rawName = normalizeExecutableName(rule.name);
 	const processName = normalizeExecutableName(process.name);
 	const commandLine = process.commandLine?.toLowerCase() ?? '';
+	const runtimeRule = isRuntimeRule(rawName);
+	const executableName = runtimeRule ? stripRuntimePrefix(rawName) : rawName;
 
-	if (isRuntimeRule(rawName)) {
-		const runtimeName = stripRuntimePrefix(rawName);
-		if (processName !== executableRuleBasename(runtimeName)) return false;
-		if (!rule.arguments) return false;
-		return commandLine.includes(rule.arguments.toLowerCase());
+	if (executableName.includes('/')) {
+		const executablePath = normalizeExecutableName(process.executablePath ?? '');
+		const normalizedPath = rule.os === 'win32' ? executablePath.replaceAll('\\', '/') : executablePath;
+		if (!matchesPathSuffix(normalizedPath, executableName)) return false;
+	} else if (processName !== executableName) {
+		return false;
 	}
 
-	if (!matchesPathSuffix(processName, rawName)) {
-		// The process name is a bare basename; a path-suffix rule can also
-		// match when the executable name component is identical.
-		if (processName !== executableRuleBasename(rawName)) return false;
-	}
+	if (runtimeRule && !rule.arguments) return false;
 	if (rule.arguments && !commandLine.includes(rule.arguments.toLowerCase())) return false;
 	return true;
 }
