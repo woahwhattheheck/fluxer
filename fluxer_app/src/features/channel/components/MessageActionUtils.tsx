@@ -3,6 +3,7 @@
 import {ConfirmModal} from '@app/features/app/components/dialogs/ConfirmModal';
 import Authentication from '@app/features/auth/state/Authentication';
 import * as ChannelPinCommands from '@app/features/channel/commands/ChannelPinsCommands';
+import {ThreadCreateModal} from '@app/features/channel/components/modals/ThreadCreateModal';
 import {useMaybeMessageViewContext} from '@app/features/channel/components/MessageViewContext';
 import type {Channel} from '@app/features/channel/models/Channel';
 import Channels from '@app/features/channel/state/Channels';
@@ -39,6 +40,7 @@ import {
 	MessageFlags,
 	MessageStates,
 	MessageTypes,
+	ChannelTypes,
 	Permissions,
 } from '@fluxer/constants/src/ChannelConstants';
 import {GuildOperations} from '@fluxer/constants/src/GuildConstants';
@@ -169,6 +171,7 @@ export interface MessagePermissions {
 	canDeleteAttachment: boolean;
 	canPinMessage: boolean;
 	canForwardMessage: boolean;
+	canCreateThread: boolean;
 	canSuppressEmbeds: boolean;
 	shouldRenderSuppressEmbeds: boolean;
 }
@@ -228,6 +231,14 @@ function getMessagePermissionsForChannel(message: Message, channel: Channel): Me
 		(isDM ? true : Permission.can(Permissions.PIN_MESSAGES, {channelId: message.channelId}));
 	const canForwardMessage =
 		!interactionsBlocked && !sendMessageDisabled && canForwardMessageFromChannel(message, channel, isDM);
+	const canCreateThread =
+		!isClientSystem &&
+		!interactionsBlocked &&
+		!sendMessageDisabled &&
+		!isDM &&
+		channel.type === ChannelTypes.GUILD_TEXT &&
+		Permission.can(Permissions.CREATE_PUBLIC_THREADS, {channelId: message.channelId}) &&
+		passesVerification;
 	const canSuppressEmbeds =
 		!interactionsBlocked &&
 		!sendMessageDisabled &&
@@ -245,6 +256,7 @@ function getMessagePermissionsForChannel(message: Message, channel: Channel): Me
 		canDeleteAttachment,
 		canPinMessage,
 		canForwardMessage,
+		canCreateThread,
 		canSuppressEmbeds,
 		shouldRenderSuppressEmbeds,
 	};
@@ -294,6 +306,7 @@ export interface MessageActionHandlers {
 	handleSaveMessage: (isSaved: boolean) => (event?: React.MouseEvent | React.KeyboardEvent) => void;
 	handleToggleSuppressEmbeds: () => void;
 	handleReply: (event?: React.MouseEvent | React.KeyboardEvent) => void;
+	handleStartThread: () => void;
 	handlePinMessage: (event?: React.MouseEvent | React.KeyboardEvent) => void;
 	handleEditMessage: () => void;
 	handleRetryMessage: () => void;
@@ -357,6 +370,19 @@ export function createMessageActionHandlers(
 		});
 		onClose?.();
 	};
+	const handleStartThread = () => {
+		const channel = sourceChannel ?? Channels.getChannel(message.channelId);
+		if (!channel?.guildId || channel.type !== ChannelTypes.GUILD_TEXT) return;
+		const openModal = () =>
+			ModalCommands.push(
+				modal(() => <ThreadCreateModal parentChannelId={channel.id} guildId={channel.guildId!} />),
+			);
+		if (onClose) {
+			ModalCommands.runAfterBottomSheetClose(onClose, openModal);
+			return;
+		}
+		openModal();
+	};
 	const handlePinMessage = (event?: React.MouseEvent | React.KeyboardEvent) => {
 		const pinMessage = () => requestMessagePin(message, i18n, {shiftKey: Boolean(event?.shiftKey)});
 		if (onClose) {
@@ -403,6 +429,7 @@ export function createMessageActionHandlers(
 		handleSaveMessage,
 		handleToggleSuppressEmbeds,
 		handleReply,
+		handleStartThread,
 		handlePinMessage,
 		handleEditMessage,
 		handleRetryMessage,
