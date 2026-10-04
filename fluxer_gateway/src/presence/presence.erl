@@ -16,6 +16,7 @@
     status := status(),
     afk := boolean(),
     mobile := boolean(),
+    activities => [map()],
     pid := pid(),
     mref := reference(),
     socket_pid := pid() | undefined

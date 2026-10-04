@@ -234,7 +234,7 @@ parse_presence_status(StatusRaw, Data) ->
         Afk = presence_boolean(<<"afk">>, Data),
         Mobile = presence_boolean(<<"mobile">>, Data),
         Base = #{status => AdjustedStatus, afk => Afk, mobile => Mobile},
-        Result = maybe_add_custom_status(Base, Data),
+        Result = maybe_add_activities(maybe_add_custom_status(Base, Data), Data),
         {ok, Result}
     catch
         error:function_clause -> {error, invalid_presence}
@@ -251,6 +251,13 @@ presence_boolean(Key, Data) ->
 maybe_add_custom_status(Base, Data) ->
     case maps:find(<<"custom_status">>, Data) of
         {ok, CS} -> Base#{<<"custom_status">> => CS};
+        error -> Base
+    end.
+
+-spec maybe_add_activities(map(), map()) -> map().
+maybe_add_activities(Base, Data) ->
+    case maps:find(<<"activities">>, Data) of
+        {ok, Activities} -> Base#{activities => presence_activities:normalize(Activities)};
         error -> Base
     end.
 
@@ -548,3 +555,46 @@ do_lazy_request_inner(Data, SocketPid, SessionPid) ->
         _ ->
             ok
     end.
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+
+presence_update_forwards_normalized_activities_test() ->
+    Activity = #{<<"name">> => <<"Focus">>, <<"type">> => 0},
+    Data = #{
+        <<"status">> => <<"online">>,
+        <<"activities">> => [Activity#{<<"user_id">> => <<"other-user">>}, null],
+        <<"user_id">> => <<"other-user">>,
+        <<"session_id">> => <<"other-session">>
+    },
+    ?assertEqual({ok, #{}}, handle_presence_update(Data, self(), #{})),
+    receive
+        {'$gen_cast', {presence_update, Update}} ->
+            ?assertEqual(
+                #{status => online, afk => false, mobile => false, activities => [Activity]},
+                Update
+            )
+    after 1000 ->
+        ?assert(false, presence_update_not_forwarded)
+    end.
+
+presence_update_preserves_activity_omission_and_explicit_clear_test() ->
+    lists:foreach(
+        fun({Fields, Expected}) ->
+            Data = Fields#{<<"status">> => <<"idle">>},
+            {ok, #{}} = handle_presence_update(Data, self(), #{}),
+            receive
+                {'$gen_cast', {presence_update, Update}} ->
+                    ?assertEqual(Expected, maps:find(activities, Update))
+            after 1000 ->
+                ?assert(false, presence_update_not_forwarded)
+            end
+        end,
+        [
+            {#{}, error},
+            {#{<<"activities">> => null}, {ok, []}},
+            {#{<<"activities">> => []}, {ok, []}}
+        ]
+    ).
+
+-endif.
