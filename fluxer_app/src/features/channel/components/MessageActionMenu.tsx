@@ -42,6 +42,7 @@ import {
 	CopyIdIcon,
 	CopyLinkIcon,
 	CopyMessageTextIcon,
+	CreateChannelIcon,
 	DebugMessageIcon,
 	DeleteIcon,
 	EditMessageIcon,
@@ -84,6 +85,10 @@ const FORWARD_DESCRIPTOR = msg({
 	message: 'Forward',
 	comment: 'Message context menu item that opens the forward-to-channel picker.',
 });
+const START_THREAD_DESCRIPTOR = msg({
+	message: 'Start thread',
+	comment: 'Message context menu item that starts a public thread in the current channel.',
+});
 const UNSUPPRESS_EMBEDS_DESCRIPTOR = msg({
 	message: 'Unsuppress embeds',
 	comment: 'Message context menu item that re-shows previously hidden link previews and embeds on the message.',
@@ -120,6 +125,7 @@ export const messageActionMenuItemIds = {
 	viewReactions: 'view_reactions',
 	removeAllReactions: 'remove_all_reactions',
 	reply: 'reply',
+	startThread: 'start_thread',
 	forward: 'forward',
 	edit: 'edit',
 	pinMessage: 'message_pin',
