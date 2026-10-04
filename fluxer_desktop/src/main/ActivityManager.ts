@@ -5,6 +5,7 @@ import path from 'node:path';
 import {matchDetectableApplications, parseDetectables} from '@electron/main/DetectableApplications';
 import {listRunningProcesses} from '@electron/main/ActivityProcessScanner';
 import {ArRpcServer} from '@electron/main/ArRpcServer';
+import {bundledDetectables} from '@electron/main/BundledDetectables';
 import type {DesktopActivity, RpcActivity} from '@electron/common/RpcActivityTypes';
 
 /**
@@ -78,10 +79,15 @@ export class ActivityManager {
 		const fetchText = this.options.fetchDetectables ?? (() => readFile(this.options.detectablesPath, 'utf8'));
 		try {
 			const text = await fetchText();
-			this.detectables = parseDetectables(JSON.parse(text));
-		} catch {
-			this.detectables = [];
-		}
+			const payload: unknown = JSON.parse(text);
+			const parsed = parseDetectables(payload);
+			// Preserve usable overrides, including an intentional empty catalogue.
+			if (Array.isArray(payload) && (payload.length === 0 || parsed.length > 0)) {
+				this.detectables = parsed;
+				return;
+			}
+		} catch {}
+		this.detectables = parseDetectables(bundledDetectables);
 	}
 
 	private async refreshDetected(): Promise<void> {

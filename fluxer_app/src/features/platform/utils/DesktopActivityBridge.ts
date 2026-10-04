@@ -14,12 +14,27 @@ import {getElectronAPI} from '@app/features/ui/utils/NativeUtils';
 export function initializeDesktopActivityBridge(): (() => void) | undefined {
 	const electronApi = getElectronAPI();
 	if (!electronApi?.getCurrentActivities || !electronApi?.onActivitiesUpdated) return undefined;
+	let active = true;
+	let updateVersion = 0;
 
 	const applyActivities = (activities: unknown): void => {
+		if (!active) return;
 		LocalPresence.setActivities(Array.isArray(activities) ? (activities as never[]) : null);
 	};
 
-	void electronApi.getCurrentActivities().then(applyActivities).catch(() => {});
-	const unsubscribe = electronApi.onActivitiesUpdated(applyActivities);
-	return unsubscribe;
+	const unsubscribe = electronApi.onActivitiesUpdated((activities) => {
+		updateVersion++;
+		applyActivities(activities);
+	});
+	const initialVersion = updateVersion;
+	void electronApi
+		.getCurrentActivities()
+		.then((activities) => {
+			if (updateVersion === initialVersion) applyActivities(activities);
+		})
+		.catch(() => {});
+	return () => {
+		active = false;
+		unsubscribe();
+	};
 }

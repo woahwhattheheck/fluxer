@@ -12,7 +12,7 @@ const ACTIVITY_TYPE_VERBS = new Map<number, string>([
 	[1, 'Streaming'],
 	[2, 'Listening to'],
 	[3, 'Watching'],
-	[4, 'Competing in'],
+	[5, 'Competing in'],
 ]);
 
 export function activityVerb(type: number): string {
