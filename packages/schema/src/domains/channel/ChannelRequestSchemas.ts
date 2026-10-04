@@ -332,3 +332,10 @@ export const StreamPreviewUploadUrlResponseSchema = z.object({
 });
 
 export type StreamPreviewUploadUrlResponseSchema = z.infer<typeof StreamPreviewUploadUrlResponseSchema>;
+
+
+export const ThreadCreateRequest = z.object({
+	name: GeneralChannelNameType.describe('The name of the public thread'),
+});
+
+export type ThreadCreateRequest = z.infer<typeof ThreadCreateRequest>;
