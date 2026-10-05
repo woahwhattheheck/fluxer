@@ -9,6 +9,7 @@ import {SsoService} from '@app/api/auth/services/SsoService';
 import type {IBlueskyOAuthService} from '@app/api/bluesky/IBlueskyOAuthService';
 import {Config} from '@app/api/Config';
 import {createApiContext} from '@app/api/CreateApiContext';
+import {CalendarEventService} from '@app/api/calendar/CalendarEventService';
 import {ChannelRepository} from '@app/api/channel/ChannelRepository';
 import {ChannelRequestService} from '@app/api/channel/services/ChannelRequestService';
 import {CrosspostSourceService} from '@app/api/channel/services/message/CrosspostSourceService';
@@ -63,6 +64,7 @@ import {
 	getAvatarService,
 	getBotAuthService,
 	getCacheService,
+	getCalendarEventRepository,
 	getChannelRepository,
 	getConnectionRepository,
 	getContactChangeLogService,
@@ -212,6 +214,7 @@ class RequestServices implements RequestScopedServices {
 	private cachedAuthRequestService: AuthRequestService | undefined;
 	private cachedSsoService: SsoService | undefined;
 	private cachedDesktopHandoffService: DesktopHandoffService | undefined;
+	private cachedCalendarEventService: CalendarEventService | undefined;
 	private cachedChannelRequestService: ChannelRequestService | undefined;
 	private cachedMessageRequestService: MessageRequestService | undefined;
 	private cachedConnectionService: ConnectionService | undefined;
@@ -580,6 +583,16 @@ class RequestServices implements RequestScopedServices {
 			this.guildService.members,
 		);
 		return this.cachedSingleCommunityService;
+	}
+
+	get calendarEventService(): CalendarEventService {
+		this.cachedCalendarEventService ??= new CalendarEventService(
+			getCalendarEventRepository(),
+			this.channelRepository,
+			this.gatewayService,
+			this.snowflakeService,
+		);
+		return this.cachedCalendarEventService;
 	}
 
 	get channelRequestService(): ChannelRequestService {
