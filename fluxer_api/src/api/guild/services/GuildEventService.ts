@@ -75,10 +75,7 @@ export class GuildEventService {
 		}
 	}
 
-	private async dispatchGuildEventCreate(params: {
-		guildId: GuildID;
-		event: GuildEventResponse;
-	}): Promise<void> {
+	private async dispatchGuildEventCreate(params: {guildId: GuildID; event: GuildEventResponse}): Promise<void> {
 		await this.gatewayService.dispatchGuild({
 			guildId: params.guildId,
 			event: 'GUILD_EVENT_CREATE',
@@ -86,10 +83,7 @@ export class GuildEventService {
 		});
 	}
 
-	private async dispatchGuildEventUpdate(params: {
-		guildId: GuildID;
-		event: GuildEventResponse;
-	}): Promise<void> {
+	private async dispatchGuildEventUpdate(params: {guildId: GuildID; event: GuildEventResponse}): Promise<void> {
 		await this.gatewayService.dispatchGuild({
 			guildId: params.guildId,
 			event: 'GUILD_EVENT_UPDATE',
