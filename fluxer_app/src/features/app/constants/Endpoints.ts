@@ -96,6 +96,12 @@ export const Endpoints = {
 	GUILDS: '/guilds',
 	GUILD: (guildId: string) => `/guilds/${guildId}`,
 	GUILD_CHANNELS: (guildId: string) => `/guilds/${guildId}/channels`,
+	GUILD_EVENTS: (guildId: string) => `/guilds/${guildId}/events`,
+	GUILD_EVENT: (guildId: string, eventId: string) => `/guilds/${guildId}/events/${eventId}`,
+	GUILD_EVENT_SUBSCRIPTION: (guildId: string, eventId: string) =>
+		`/guilds/${guildId}/events/${eventId}/subscription`,
+	USER_CALENDAR_EVENTS: '/users/@me/calendar/events',
+	USER_CALENDAR_EXPORT: '/users/@me/calendar.ics',
 	GUILD_MEMBER: (guildId: string, query = ME) => `/guilds/${guildId}/members/${query}`,
 	GUILD_MEMBERS: (guildId: string) => `/guilds/${guildId}/members`,
 	GUILD_MEMBERS_SEARCH: (guildId: string) => `/guilds/${guildId}/members-search`,
