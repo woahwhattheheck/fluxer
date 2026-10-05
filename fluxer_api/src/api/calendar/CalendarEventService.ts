@@ -185,7 +185,7 @@ export class CalendarEventService {
 		const nextStartsAt = params.data.starts_at ? new Date(params.data.starts_at) : existing.starts_at;
 		const nextEndsAt = params.data.ends_at ? new Date(params.data.ends_at) : existing.ends_at;
 		if (nextEndsAt.getTime() <= nextStartsAt.getTime()) {
-			throw InputValidationError.fromCode('ends_at', ValidationErrorCodes.INVALID_REQUEST);
+			throw InputValidationError.fromCode('ends_at', ValidationErrorCodes.EVENT_END_MUST_BE_AFTER_START);
 		}
 		const row: CalendarEventRow = {
 			...existing,
