@@ -144,6 +144,14 @@ import {
 	type WebhookRow,
 	type WebhooksBySourceChannelRow,
 } from '@app/api/database/types/ChannelTypes';
+import {
+	CALENDAR_EVENT_COLUMNS,
+	CALENDAR_EVENT_SUBSCRIPTION_BY_USER_COLUMNS,
+	CALENDAR_EVENT_SUBSCRIPTION_COLUMNS,
+	type CalendarEventRow,
+	type CalendarEventSubscriptionByUserRow,
+	type CalendarEventSubscriptionRow,
+} from '@app/api/database/types/CalendarTypes';
 import {USER_CONNECTION_STORAGE_COLUMNS, type UserConnectionStorageRow} from '@app/api/database/types/ConnectionTypes';
 import {
 	NCMEC_ATTACHMENT_SUBMISSION_COLUMNS,
@@ -544,6 +552,32 @@ export const ChannelsByGuild = defineTable<ChannelsByGuildRow, 'guild_id' | 'cha
 	name: 'channels_by_guild_id',
 	columns: CHANNELS_BY_GUILD_COLUMNS,
 	primaryKey: ['guild_id', 'channel_id'],
+});
+export const CalendarEvents = defineTable<CalendarEventRow, 'guild_id' | 'event_id', 'guild_id'>({
+	name: 'calendar_events',
+	columns: CALENDAR_EVENT_COLUMNS,
+	primaryKey: ['guild_id', 'event_id'],
+	partitionKey: ['guild_id'],
+});
+export const CalendarEventSubscriptions = defineTable<
+	CalendarEventSubscriptionRow,
+	'event_id' | 'user_id',
+	'event_id'
+>({
+	name: 'calendar_event_subscriptions',
+	columns: CALENDAR_EVENT_SUBSCRIPTION_COLUMNS,
+	primaryKey: ['event_id', 'user_id'],
+	partitionKey: ['event_id'],
+});
+export const CalendarEventSubscriptionsByUser = defineTable<
+	CalendarEventSubscriptionByUserRow,
+	'user_id' | 'event_id',
+	'user_id'
+>({
+	name: 'calendar_event_subscriptions_by_user',
+	columns: CALENDAR_EVENT_SUBSCRIPTION_BY_USER_COLUMNS,
+	primaryKey: ['user_id', 'event_id'],
+	partitionKey: ['user_id'],
 });
 export const ChannelState = defineTable<ChannelStateRow, 'channel_id'>({
 	name: 'channel_state',
