@@ -42,6 +42,11 @@ export const channelTypeOptions: Array<ChannelTypeOption> = [
 		desc: 'Post updates that other communities can follow into their own channels',
 	},
 	{
+		value: ChannelTypes.GUILD_CALENDAR,
+		name: 'Calendar Channel',
+		desc: 'Plan community events and let members subscribe to a shared schedule',
+	},
+	{
 		value: ChannelTypes.GUILD_VOICE,
 		name: 'Voice Channel',
 		desc: 'Hang out together with voice, video, and screen share',
@@ -64,7 +69,7 @@ export async function createChannel(guildId: string, data: FormInputs, parentId?
 		user_limit: channelType === ChannelTypes.GUILD_VOICE ? 0 : null,
 		voice_connection_limit: channelType === ChannelTypes.GUILD_VOICE ? VOICE_CHANNEL_CONNECTION_LIMIT_DEFAULT : null,
 	});
-	if (GUILD_TEXT_BASED_CHANNEL_TYPES.has(channel.type)) {
+	if (GUILD_TEXT_BASED_CHANNEL_TYPES.has(channel.type) || channel.type === ChannelTypes.GUILD_CALENDAR) {
 		setTimeout(() => {
 			selectChannel(guildId, channel.id);
 		}, 50);
@@ -94,7 +99,7 @@ export async function duplicateChannel(
 			deny: overwrite.deny.toString(),
 		})),
 	});
-	if (GUILD_TEXT_BASED_CHANNEL_TYPES.has(channel.type)) {
+	if (GUILD_TEXT_BASED_CHANNEL_TYPES.has(channel.type) || channel.type === ChannelTypes.GUILD_CALENDAR) {
 		setTimeout(() => {
 			selectChannel(guildId, channel.id);
 		}, 50);
