@@ -67,6 +67,12 @@ export class ChannelOperationsService {
 	): Promise<ChannelResponse> {
 		await this.ensureGuildHasCapacity(params.guildId);
 		const channels = await this.channelRepository.listGuildChannels(params.guildId);
+		if (
+			params.data.type === ChannelTypes.GUILD_CALENDAR &&
+			channels.some((channel) => channel.type === ChannelTypes.GUILD_CALENDAR)
+		) {
+			throw InputValidationError.fromCode('type', ValidationErrorCodes.CALENDAR_CHANNEL_ALREADY_EXISTS);
+		}
 		const parentId = params.data.parent_id ? createChannelID(params.data.parent_id) : null;
 		const parentChannel = this.validateParentCategory({
 			parentId,
