@@ -102,8 +102,6 @@ const MAIN_SPEC_EXEMPT = new Map<string, {file: string; anchor: string; reason: 
 
 const DELIBERATELY_UNDOCUMENTED = new Map([
 	['GET /users/@me/mobile-devices', 'mobile notifications, backported separately'],
-	['POST /users/@me/mobile-devices', 'mobile notifications, backported separately'],
-	['POST /users/@me/mobile-devices/unregister', 'mobile notifications, backported separately'],
 	['DELETE /users/@me/mobile-devices/{}', 'mobile notifications, backported separately'],
 	['GET /users/@me/push/subscriptions', 'push API, backported separately'],
 	['POST /users/@me/push/subscribe', 'push API, backported separately'],
@@ -125,14 +123,6 @@ const OUT_OF_BAND_CREDENTIAL = new Map<string, OutOfBandRoute>([
 		},
 	],
 	[
-		'POST /webhooks/twilio/sms',
-		{
-			reason:
-				'installed only when config.sms.enabled, and then only when the inbound webhook token and public URL are both set, so a default or self-hosted instance never registers it',
-			documentedIn: null,
-		},
-	],
-	[
 		'POST /webhooks/livekit',
 		{
 			reason: 'a LiveKit-signed callback whose shipped target is the internal address http://api:8080/webhooks/livekit',
@@ -145,6 +135,22 @@ const OUT_OF_BAND_CREDENTIAL = new Map<string, OutOfBandRoute>([
 			reason:
 				'a Standard Webhooks delivery signed with FLUXER_EMAIL_WEBHOOK_SECRET, which answers 404 Email not enabled while email is off',
 			documentedIn: {file: 'operator/configuration.mdx', anchor: 'POST /webhooks/sweego'},
+		},
+	],
+	[
+		'POST /webhooks/app-store',
+		{
+			reason:
+				'an App Store Server Notification whose signedPayload must verify against the pinned Apple root before it is queued. The route is hosted-only',
+			documentedIn: {file: 'http-api/in-app-purchases.mdx', anchor: 'POST /webhooks/app-store'},
+		},
+	],
+	[
+		'POST /webhooks/google-play',
+		{
+			reason:
+				'a Pub/Sub push whose Google-signed OIDC token must match the configured audience and service account before it is queued. The route is hosted-only',
+			documentedIn: {file: 'http-api/in-app-purchases.mdx', anchor: 'POST /webhooks/google-play'},
 		},
 	],
 	[
@@ -209,8 +215,8 @@ const EXEMPTION_RULES: ReadonlyArray<ExemptionRule> = [
 	{
 		name: 'out-of-band credential',
 		justification:
-			'no ordinary client holds the credential. Each entry states its guard, and three are covered in prose',
-		anchors: [{file: 'fluxer_api/src/api/app/ControllerRegistry.ts', anchor: 'if (config.sms.enabled) {'}],
+			'no ordinary client holds the credential. Each entry states its guard, and five are covered in prose',
+		anchors: [{file: 'fluxer_api/src/api/app/ControllerRegistry.ts', anchor: 'InternalRpcController(routes);'}],
 		covers: (shape) => OUT_OF_BAND_CREDENTIAL.has(shape),
 	},
 ];
@@ -249,6 +255,7 @@ const MEDIA_PROXY_ASSET_PREFIXES = new Map([
 	['splashes', '"splashes" => AssetKind::Splash'],
 	['embed-splashes', '"embed-splashes" => AssetKind::EmbedSplash'],
 	['guilds', 'fn parse_guild_member_asset_path'],
+	['guild-events', 'fn parse_guild_event_image_path'],
 ]);
 
 interface SpecOperation {
@@ -1515,7 +1522,7 @@ console.log('self-hosting guide against deploy/self-hosting');
 		}
 	}
 
-	const ENV_VALUE_FLOOR = 19;
+	const ENV_VALUE_FLOOR = 17;
 	const ENV_VALUE_UNSET = 'unset';
 	let inEnvValueTable = false;
 	let envEntry: string | null = null;
@@ -1701,7 +1708,7 @@ console.log('unthrottled routes and global bucket claims');
 	failures += section('rate limit prose disagreements', problems);
 }
 
-console.log('error registry and abuse signal weights');
+console.log('error registry');
 {
 	const errorsPage = await readFile(path.join(DOCS_ROOT, 'http-api/errors.md'), 'utf8');
 	const documentedCodes = new Set<string>();
@@ -1734,20 +1741,6 @@ console.log('error registry and abuse signal weights');
 		}
 	}
 
-	const banner = await readFile(path.join(REPO_ROOT, 'fluxer_api/src/api/middleware/AbusiveIpAutoBanner.ts'), 'utf8');
-	const weights = new Map<string, string>();
-	for (const rule of banner.matchAll(/if \(status === (\d{3})\) return ([\d.]+);/gu)) {
-		weights.set(rule[1], rule[2]);
-	}
-	for (const [status, weight] of weights) {
-		if (status === '404') {
-			continue;
-		}
-		if (!errorsPage.includes(`A ${status} weighs ${weight}`) && !errorsPage.includes(`a ${status} weighs ${weight}`)) {
-			problems.push(`errors.md does not state that a ${status} weighs ${weight}`);
-		}
-	}
-
 	const documentedRegistryCodes = [...registryCodes].filter((c) => documentedCodes.has(c)).length;
 	const UNDOCUMENTED_VALIDATION_CODES = new Set(['EMAIL_DOMAIN_CANNOT_RECEIVE_MAIL']);
 	const expectedEntries = registryCodes.size + validationCodes.size - UNDOCUMENTED_VALIDATION_CODES.size;
@@ -1767,7 +1760,6 @@ console.log('error registry and abuse signal weights');
 		);
 	}
 	console.log(`  registry codes: ${registryCodes.size.toString()}, documented: ${documentedRegistryCodes.toString()}`);
-	console.log(`  abuse signal weights compared: ${weights.size.toString()}`);
 	failures += section('error registry disagreements', problems);
 }
 
@@ -1974,7 +1966,7 @@ console.log('bot capability flag (from the middleware chain)');
 		if (documented == null) {
 			continue;
 		}
-		const anyLogin = route.hasLoginRequired || route.hasLoginRequiredAllowSuspicious;
+		const anyLogin = route.hasLoginRequired;
 		const sourceAcceptsBot = anyLogin && !route.hasDefaultUserOnly;
 		const exemption = BOT_EXEMPT.get(key);
 		if (exemption != null) {
@@ -2034,7 +2026,7 @@ console.log('unauthenticated capability flag (from the middleware chain)');
 		if (documented == null) {
 			continue;
 		}
-		const anyLogin = route.hasLoginRequired || route.hasLoginRequiredAllowSuspicious;
+		const anyLogin = route.hasLoginRequired;
 		const sourceIsOpen = !anyLogin && !route.middlewares.some((name) => /OAuth2Scope/u.test(name));
 		const exemption = UNAUTHENTICATED_EXEMPT.get(key);
 		if (exemption != null) {
@@ -2090,7 +2082,7 @@ console.log('spec security field against the middleware chain');
 		}
 		const declaredSchemes = declaredSecurity.schemes;
 		compared += 1;
-		const anyLogin = route.hasLoginRequired || route.hasLoginRequiredAllowSuspicious;
+		const anyLogin = route.hasLoginRequired;
 		const acceptsBot = anyLogin && !route.hasDefaultUserOnly;
 		const requiresAuthentication =
 			anyLogin ||

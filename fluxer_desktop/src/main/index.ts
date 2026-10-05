@@ -16,7 +16,7 @@ import {
 	WINDOWS_TOAST_ACTIVATOR_CLSID,
 } from '@electron/common/DesktopIdentity';
 import {configureUserDataPath} from '@electron/common/UserDataPath';
-import {registerAutostartHandlers} from '@electron/main/Autostart';
+import {isAutostartLaunch, registerAutostartHandlers} from '@electron/main/Autostart';
 import {
 	addLinuxHardwareVideoEncodeFeatures,
 	addWindowsHardwareVideoEncodeFeatures,
@@ -25,7 +25,6 @@ import {
 	appendEnabledBlinkFeature,
 	appendEnabledChromiumFeatures,
 	appendLinuxChromiumFlagsConfig,
-	appendLinuxOzonePlatformHint,
 	appendWindowsGpuDriverWorkaroundSwitches,
 	BASE_DISABLED_CHROMIUM_FEATURES,
 	MIDDLE_CLICK_AUTOSCROLL_BLINK_FEATURE,
@@ -54,7 +53,7 @@ import {initializeDockMenu} from '@electron/main/DockMenu';
 import {cleanupGlobalKeyHook, registerGlobalKeyHookHandlers} from '@electron/main/GlobalKeyHook';
 import {cleanupIpcHandlers, registerIpcHandlers} from '@electron/main/IpcHandlers';
 import {initializeJumpList} from '@electron/main/JumpList';
-import {describeLaunchDiagnosticOptions, shouldStartHiddenAtLogin} from '@electron/main/LaunchOptions';
+import {describeLaunchDiagnosticOptions} from '@electron/main/LaunchOptions';
 import {cleanupVirtmic, registerVirtmicHandlers} from '@electron/main/LinuxAudioCapture';
 import {initializeMainI18n, t} from '@electron/main/MainI18n';
 import {createApplicationMenu} from '@electron/main/Menu';
@@ -75,6 +74,7 @@ import {
 	setQuitting,
 	showWindow,
 } from '@electron/main/Window';
+import {removeLegacySquirrelUninstallEntry} from '@electron/main/WindowsLegacyUninstallEntry';
 import {removeFluxerVulkanLayerRegistrations} from '@electron/main/WindowsVulkanLayerCleanup';
 import {app, dialog, netLog} from 'electron';
 import log from 'electron-log';
@@ -270,7 +270,6 @@ if (launchConfigurationError) {
 	if (launchDiagnosticOptions.safeMode !== true) {
 		appendLinuxChromiumFlagsConfig(userDataConfig.channel);
 	}
-	appendLinuxOzonePlatformHint();
 	if (process.platform === 'win32') {
 		app.setToastActivatorCLSID(WINDOWS_TOAST_ACTIVATOR_CLSID);
 		app.setAppUserModelId(WINDOWS_APP_USER_MODEL_ID);
@@ -303,6 +302,11 @@ if (launchConfigurationError) {
 			.then(() => app.whenReady())
 			.then(async () => {
 				log.info('App ready, initializing...');
+				try {
+					runStartupPhase('host-resolver', () => app.configureHostResolver({enableAdditionalDnsQueryTypes: false}));
+				} catch (error) {
+					log.error('[Init] Failed to configure the host resolver:', error);
+				}
 				await runStartupPhaseAsync('launch-net-log', startLaunchNetLog);
 				try {
 					await runStartupPhaseAsync('desktop-debug-info', async () => {
@@ -362,6 +366,11 @@ if (launchConfigurationError) {
 					log.error('[Init] Failed to remove stale Vulkan layer registrations:', error);
 				}
 				try {
+					runStartupPhase('legacy-uninstall-entry-cleanup', removeLegacySquirrelUninstallEntry);
+				} catch (error: unknown) {
+					log.error('[Init] Failed to remove the legacy Squirrel uninstall entry:', error);
+				}
+				try {
 					runStartupPhase('native-screen-capture-handlers', registerNativeScreenCaptureHandlers);
 				} catch (error: unknown) {
 					log.error('[Init] Failed to register native screen capture handlers:', error);
@@ -377,7 +386,7 @@ if (launchConfigurationError) {
 					log.error('[Init] Failed to create application menu:', error);
 				}
 				runStartupPhase('create-window', () => {
-					createWindow({startHidden: shouldStartHiddenAtLogin()});
+					createWindow({startHidden: isAutostartLaunch() && getDesktopWindowBehaviorSettings().startMinimized});
 				});
 				const initialTask = consumeInitialJumpListTask();
 				if (initialTask) {

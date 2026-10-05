@@ -395,14 +395,15 @@ Forward every path and query string unchanged. The edge handles routing:
 | `/.well-known/apple-app-site-association`, `/apple-app-site-association` | Apple app association |
 | `/.well-known/assetlinks.json` | Android app association |
 | `/version.json` | Client version metadata |
+| `/_geoip` | Client location lookup |
 
-All other paths serve the web app.
+All other paths serve the web app. The admin path follows `FLUXER_ADMIN_BASE_PATH`, `/admin` by default.
 
 Pass the query string on `/gateway` through untouched. Clients always send `?v=`, `?encoding=`, `?compress=` and `?stream=`, and `1` is the only version the Gateway accepts.
 
 Apple and Google require the association files at those fixed paths for saved-password autofill and app links. A proxy that forwards all paths needs no extra rules. Include them explicitly if you use a path allowlist.
 
-`/_metrics` on the API, Media Proxy, and Gateway, plus `/_health/ready`, `/_health/drain`, and `/_health/undrain` on the Gateway, are gated to loopback and are unreachable through any proxy. The probes that work through a proxy are `/_health`, `/api/_health`, `/gateway/_health`, and `/media/_health`.
+`/_metrics` on the API, Media Proxy, Gateway, and push service, plus `/_health/ready`, `/_health/drain`, and `/_health/undrain` on the Gateway, are gated to loopback and are unreachable through any proxy. The push service has no public path. The probes that work through a proxy are `/_health`, `/api/_health`, `/gateway/_health`, and `/media/_health`.
 
 ## Trusted proxies
 

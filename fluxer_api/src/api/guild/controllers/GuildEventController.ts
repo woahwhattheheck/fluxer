@@ -1,0 +1,130 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+import {createGuildEventID, createGuildID} from '@app/api/BrandedTypes';
+import {LoginRequired} from '@app/api/middleware/AuthMiddleware';
+import {RateLimitMiddleware} from '@app/api/middleware/RateLimitMiddleware';
+import {OpenAPI} from '@app/api/middleware/ResponseTypeMiddleware';
+import {RateLimitConfigs} from '@app/api/RateLimitConfig';
+import type {HonoApp} from '@app/api/types/HonoEnv';
+import {Validator} from '@app/api/Validator';
+import {GuildIdParam} from '@fluxer/schema/src/domains/common/CommonParamSchemas';
+import {
+	GuildEventCreateRequest,
+	GuildEventIdParam,
+	GuildEventListResponse,
+	GuildEventResponse,
+	GuildEventUpdateRequest,
+} from '@fluxer/schema/src/domains/guild/GuildEventSchemas';
+
+export function GuildEventController(app: HonoApp) {
+	app.get(
+		'/guilds/:guild_id/events',
+		LoginRequired,
+		RateLimitMiddleware(RateLimitConfigs.GUILD_EVENTS_LIST),
+		Validator('param', GuildIdParam),
+		OpenAPI({
+			operationId: 'list_guild_events',
+			summary: 'List community events',
+			description: 'List community events. Returns scheduled events for the guild to members of that guild.',
+			responseSchema: GuildEventListResponse,
+			statusCode: 200,
+			security: ['botToken', 'bearerToken', 'sessionToken'],
+			tags: ['Guilds'],
+		}),
+		async (ctx) => {
+			const guildId = createGuildID(ctx.req.valid('param').guild_id);
+			const userId = ctx.get('user').id;
+			return ctx.json(await ctx.get('guildService').events.list({userId, guildId}));
+		},
+	);
+
+	app.post(
+		'/guilds/:guild_id/events',
+		LoginRequired,
+		RateLimitMiddleware(RateLimitConfigs.GUILD_EVENT_CREATE),
+		Validator('param', GuildIdParam),
+		Validator('json', GuildEventCreateRequest),
+		OpenAPI({
+			operationId: 'create_guild_event',
+			summary: 'Create a community event',
+			description:
+				'Requires CREATE_EVENTS or MANAGE_EVENTS. Event images pass through explicit-media and banned-content scanners.',
+			requestSchema: GuildEventCreateRequest,
+			responseSchema: GuildEventResponse,
+			statusCode: 200,
+			security: ['botToken', 'bearerToken', 'sessionToken'],
+			tags: ['Guilds'],
+		}),
+		async (ctx) => {
+			const guildId = createGuildID(ctx.req.valid('param').guild_id);
+			const userId = ctx.get('user').id;
+			return ctx.json(
+				await ctx
+					.get('guildService')
+					.events.create({userId, guildId, data: ctx.req.valid('json')}, ctx.get('auditLogReason')),
+			);
+		},
+	);
+
+	app.patch(
+		'/guilds/:guild_id/events/:event_id',
+		LoginRequired,
+		RateLimitMiddleware(RateLimitConfigs.GUILD_EVENT_UPDATE),
+		Validator('param', GuildEventIdParam),
+		Validator('json', GuildEventUpdateRequest),
+		OpenAPI({
+			operationId: 'update_guild_event',
+			summary: 'Update a community event',
+			description:
+				'Update a community event. Requires MANAGE_EVENTS, or CREATE_EVENTS when the caller created the event.',
+			requestSchema: GuildEventUpdateRequest,
+			responseSchema: GuildEventResponse,
+			statusCode: 200,
+			security: ['botToken', 'bearerToken', 'sessionToken'],
+			tags: ['Guilds'],
+		}),
+		async (ctx) => {
+			const params = ctx.req.valid('param');
+			return ctx.json(
+				await ctx.get('guildService').events.update(
+					{
+						userId: ctx.get('user').id,
+						guildId: createGuildID(params.guild_id),
+						eventId: createGuildEventID(params.event_id),
+						data: ctx.req.valid('json'),
+					},
+					ctx.get('auditLogReason'),
+				),
+			);
+		},
+	);
+
+	app.delete(
+		'/guilds/:guild_id/events/:event_id',
+		LoginRequired,
+		RateLimitMiddleware(RateLimitConfigs.GUILD_EVENT_DELETE),
+		Validator('param', GuildEventIdParam),
+		OpenAPI({
+			operationId: 'delete_guild_event',
+			summary: 'Delete a community event',
+			description:
+				'Delete a community event. Requires MANAGE_EVENTS, or CREATE_EVENTS when the caller created the event.',
+			responseSchema: null,
+			statusCode: 204,
+			security: ['botToken', 'bearerToken', 'sessionToken'],
+			tags: ['Guilds'],
+		}),
+		async (ctx) => {
+			const params = ctx.req.valid('param');
+			await ctx.get('guildService').events.delete(
+				{
+					userId: ctx.get('user').id,
+					guildId: createGuildID(params.guild_id),
+					eventId: createGuildEventID(params.event_id),
+				},
+				ctx.get('auditLogReason'),
+			);
+			return ctx.body(null, 204);
+		},
+	);
+}

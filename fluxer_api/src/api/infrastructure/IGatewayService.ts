@@ -24,6 +24,19 @@ export interface CallData {
 	voice_states: Array<VoiceState>;
 }
 
+export interface CallCaller {
+	id: string;
+	name: string;
+	avatar: string | null;
+}
+
+export function callCallerRpcParams(caller: CallCaller | undefined): Record<string, unknown> {
+	if (!caller) {
+		return {};
+	}
+	return {caller_id: caller.id, caller_name: caller.name, caller_avatar: caller.avatar};
+}
+
 export interface GatewayGuildMemoryStatsEntry {
 	node_id: string;
 	guild_id: string | null;
@@ -49,6 +62,9 @@ export interface GatewayNodeStatsEntry {
 	node_id: string;
 	status: string;
 	sessions: number;
+	session_resumes_total: number | null;
+	websocket_dispatches_total: number | null;
+	websocket_dispatch_drops_total: number | null;
 	guilds: number;
 	presences: number;
 	calls: number;
@@ -61,6 +77,9 @@ export interface GatewayNodeStatsEntry {
 export interface GatewayNodeStats {
 	status: string;
 	sessions: number;
+	session_resumes_total: number;
+	websocket_dispatches_total: number;
+	websocket_dispatch_drops_total: number;
 	guilds: number;
 	presences: number;
 	calls: number;
@@ -279,12 +298,6 @@ export abstract class IGatewayService {
 
 	abstract dispatchPresence(params: {userId: UserID; event: GatewayDispatchEvent; data: unknown}): Promise<void>;
 
-	abstract invalidatePushBadgeCount(params: {userId: UserID}): Promise<void>;
-
-	abstract invalidatePushBadgeCounts(params: {userIds: Array<UserID>}): Promise<void>;
-
-	abstract invalidatePushSubscriptions(params: {userId: UserID}): Promise<void>;
-
 	abstract clearPushChannelNotifications(params: {
 		userId: UserID;
 		channelId: ChannelID;
@@ -381,11 +394,12 @@ export abstract class IGatewayService {
 		region: string,
 		ringing: Array<string>,
 		recipients: Array<string>,
+		caller?: CallCaller,
 	): Promise<CallData>;
 
 	abstract updateCallRegion(channelId: ChannelID, region: string | null): Promise<boolean>;
 
-	abstract ringCallRecipients(channelId: ChannelID, recipients: Array<string>): Promise<boolean>;
+	abstract ringCallRecipients(channelId: ChannelID, recipients: Array<string>, caller?: CallCaller): Promise<boolean>;
 
 	abstract stopRingingCallRecipients(channelId: ChannelID, recipients: Array<string>): Promise<boolean>;
 

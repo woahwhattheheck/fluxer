@@ -20,6 +20,7 @@ import {
 	hasActiveDesktopTray,
 	updateTrayRuntimeState,
 } from '@electron/main/DesktopTray';
+import {registerDomainMigrationHandlers} from '@electron/main/DomainMigration';
 import {DownloadChecksumError, downloadFile} from '@electron/main/FileDownloads';
 import {
 	type LinuxAppearanceSnapshot,
@@ -107,6 +108,9 @@ function normalizeDesktopWindowBehaviorUpdate(value: unknown): Partial<DesktopWi
 	if (typeof value.closeToTray === 'boolean') {
 		update.closeToTray = value.closeToTray;
 	}
+	if (typeof value.startMinimized === 'boolean') {
+		update.startMinimized = value.startMinimized;
+	}
 	if (typeof value.useNativeTitleBar === 'boolean') {
 		update.useNativeTitleBar = value.useNativeTitleBar;
 	}
@@ -136,6 +140,7 @@ function getActiveMiddleClickAutoscroll(): boolean {
 export function registerIpcHandlers(): void {
 	registerVoiceDebugEventSinkPopoutIpcHandlers();
 	registerVoiceBackgroundMediaCacheHandlers();
+	registerDomainMigrationHandlers();
 	ipcMain.handle('get-desktop-info', () => getDesktopInfo());
 	ipcMain.handle('get-gpu-info', () => getGpuInfo());
 	ipcMain.handle('get-app-metrics', () => getAppMetricsSnapshot());

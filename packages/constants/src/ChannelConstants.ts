@@ -8,19 +8,34 @@ export const ChannelTypes = {
 	GUILD_VOICE: 2,
 	GROUP_DM: 3,
 	GUILD_CATEGORY: 4,
+	GUILD_ANNOUNCEMENT: 5,
 	GUILD_LINK: 998,
 	DM_PERSONAL_NOTES: 999,
 } as const;
 
 export type ChannelType = ValueOf<typeof ChannelTypes>;
 
-export const GUILD_TEXT_BASED_CHANNEL_TYPES = new Set<number>([ChannelTypes.GUILD_TEXT, ChannelTypes.GUILD_VOICE]);
+export const GUILD_TEXT_BASED_CHANNEL_TYPES = new Set<number>([
+	ChannelTypes.GUILD_TEXT,
+	ChannelTypes.GUILD_VOICE,
+	ChannelTypes.GUILD_ANNOUNCEMENT,
+]);
 export const TEXT_BASED_CHANNEL_TYPES = new Set<number>([
 	...GUILD_TEXT_BASED_CHANNEL_TYPES,
 	ChannelTypes.DM,
 	ChannelTypes.DM_PERSONAL_NOTES,
 	ChannelTypes.GROUP_DM,
 ]);
+export const ANNOUNCEMENT_CONVERTIBLE_CHANNEL_TYPES = new Set<number>([
+	ChannelTypes.GUILD_TEXT,
+	ChannelTypes.GUILD_ANNOUNCEMENT,
+]);
+export const CHANNEL_FOLLOW_TARGET_TYPES = new Set<number>([ChannelTypes.GUILD_TEXT]);
+export const WebhookTypes = {
+	INCOMING: 1,
+	CHANNEL_FOLLOWER: 2,
+} as const;
+export type WebhookTypeValue = ValueOf<typeof WebhookTypes>;
 export const AUTOMATIC_VOICE_REGION_ID = 'automatic';
 export const ChannelOverwriteTypes = {
 	ROLE: 0,
@@ -43,6 +58,7 @@ export const MessageTypes = {
 	CHANNEL_ICON_CHANGE: 5,
 	CHANNEL_PINNED_MESSAGE: 6,
 	USER_JOIN: 7,
+	CHANNEL_FOLLOW_ADD: 12,
 	REPLY: 19,
 	CLIENT_SYSTEM: 99,
 } as const;
@@ -54,6 +70,7 @@ const MESSAGE_TYPE_DELETABLE = {
 	[MessageTypes.REPLY]: true,
 	[MessageTypes.CHANNEL_PINNED_MESSAGE]: true,
 	[MessageTypes.USER_JOIN]: true,
+	[MessageTypes.CHANNEL_FOLLOW_ADD]: true,
 	[MessageTypes.RECIPIENT_ADD]: false,
 	[MessageTypes.RECIPIENT_REMOVE]: false,
 	[MessageTypes.CALL]: false,
@@ -88,17 +105,25 @@ export const AllowedMentionParseTypesDescriptions: Record<keyof typeof AllowedMe
 	EVERYONE: 'Parse @everyone and @here mentions from the message content',
 };
 export const MessageFlags = {
+	CROSSPOSTED: 1 << 0,
+	IS_CROSSPOST: 1 << 1,
 	SUPPRESS_EMBEDS: 1 << 2,
+	SOURCE_MESSAGE_DELETED: 1 << 3,
 	SUPPRESS_NOTIFICATIONS: 1 << 12,
 	VOICE_MESSAGE: 1 << 13,
 } as const;
 export const MessageFlagsDescriptions: Record<keyof typeof MessageFlags, string> = {
+	CROSSPOSTED: 'This message has been published to channels that follow this announcement channel',
+	IS_CROSSPOST: 'This message was delivered from an announcement channel this channel follows',
 	SUPPRESS_EMBEDS: 'Do not include embeds when serialising this message',
+	SOURCE_MESSAGE_DELETED: 'The published message this copy came from has been deleted',
 	SUPPRESS_NOTIFICATIONS: 'This message will not trigger push or desktop notifications',
 	VOICE_MESSAGE: 'This message is a voice message',
 };
 export const SENDABLE_MESSAGE_FLAGS =
 	MessageFlags.SUPPRESS_EMBEDS | MessageFlags.SUPPRESS_NOTIFICATIONS | MessageFlags.VOICE_MESSAGE;
+export const CROSSPOST_SERVER_FLAGS =
+	MessageFlags.CROSSPOSTED | MessageFlags.IS_CROSSPOST | MessageFlags.SOURCE_MESSAGE_DELETED;
 export const MessageAttachmentFlags = {
 	IS_SPOILER: 1 << 3,
 	CONTAINS_EXPLICIT_MEDIA: 1 << 4,
@@ -168,9 +193,11 @@ export const Permissions = {
 	MANAGE_ROLES: 1n << 28n,
 	MANAGE_WEBHOOKS: 1n << 29n,
 	MANAGE_EXPRESSIONS: 1n << 30n,
+	MANAGE_EVENTS: 1n << 33n,
 	USE_EXTERNAL_STICKERS: 1n << 37n,
 	MODERATE_MEMBERS: 1n << 40n,
 	CREATE_EXPRESSIONS: 1n << 43n,
+	CREATE_EVENTS: 1n << 44n,
 	PIN_MESSAGES: 1n << 51n,
 	BYPASS_SLOWMODE: 1n << 52n,
 	UPDATE_RTC_REGION: 1n << 53n,
@@ -207,9 +234,11 @@ export const PermissionsDescriptions: Record<keyof typeof Permissions, string> =
 	MANAGE_ROLES: 'Allows management and editing of roles',
 	MANAGE_WEBHOOKS: 'Allows management and editing of webhooks',
 	MANAGE_EXPRESSIONS: 'Allows management of guild expressions',
+	MANAGE_EVENTS: 'Allows management and editing of community events',
 	USE_EXTERNAL_STICKERS: 'Allows using stickers from other guilds',
 	MODERATE_MEMBERS: 'Allows timing out users',
 	CREATE_EXPRESSIONS: 'Allows creating guild expressions',
+	CREATE_EVENTS: 'Allows creating community events',
 	PIN_MESSAGES: 'Allows pinning messages',
 	BYPASS_SLOWMODE: 'Allows bypassing slowmode',
 	UPDATE_RTC_REGION: 'Allows updating the voice region',
@@ -218,6 +247,7 @@ export const PermissionsDescriptions: Record<keyof typeof Permissions, string> =
 export const ALL_PERMISSIONS = Object.values(Permissions).reduce((acc, p) => acc | p, 0n);
 export const DEFAULT_PERMISSIONS =
 	Permissions.CREATE_INSTANT_INVITE |
+	Permissions.CREATE_EVENTS |
 	Permissions.ADD_REACTIONS |
 	Permissions.STREAM |
 	Permissions.VIEW_CHANNEL |
@@ -242,5 +272,6 @@ export const ElevatedPermissions =
 	Permissions.MANAGE_MESSAGES |
 	Permissions.MANAGE_WEBHOOKS |
 	Permissions.MANAGE_EXPRESSIONS |
+	Permissions.MANAGE_EVENTS |
 	Permissions.MODERATE_MEMBERS;
 export const CHANNEL_REINDEX_AFTER_TIMESTAMP = 1779557400;

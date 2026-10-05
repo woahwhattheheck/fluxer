@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
-	INERT_SCREEN_SHARE_DELIVERY_ASSIGNMENT,
-	ScreenShareDeliveryAssignmentResponse,
-} from '@fluxer/schema/src/domains/admin/ScreenShareDeliverySchemas';
+	DomainMigrationAssignmentResponse,
+	INERT_DOMAIN_MIGRATION_ASSIGNMENT,
+} from '@fluxer/schema/src/domains/admin/DomainMigrationSchemas';
 import {
-	INERT_VOICE_NOISE_SUPPRESSION_ASSIGNMENT,
-	VoiceNoiseSuppressionAssignmentResponse,
-} from '@fluxer/schema/src/domains/admin/VoiceNoiseSuppressionSchemas';
+	INERT_PLUTONIUM_PAGE_ASSIGNMENT,
+	PlutoniumPageAssignmentResponse,
+} from '@fluxer/schema/src/domains/admin/PlutoniumPageSchemas';
 import {z} from 'zod';
 
 export const EXPERIMENT_MIN_POLL_INTERVAL_SECONDS = 60;
@@ -45,8 +45,8 @@ export const ExperimentDeliveryConfigResponse = ExperimentDeliveryConfigSchema;
 export type ExperimentDeliveryConfigResponse = z.infer<typeof ExperimentDeliveryConfigResponse>;
 
 const ExperimentAssignmentsSchema = z.object({
-	voice_noise_suppression: VoiceNoiseSuppressionAssignmentResponse.optional(),
-	screen_share_delivery: ScreenShareDeliveryAssignmentResponse.optional(),
+	domain_migration: DomainMigrationAssignmentResponse.optional(),
+	plutonium_page: PlutoniumPageAssignmentResponse.optional(),
 });
 
 export const ExperimentAssignmentsResponse = z.object({
@@ -63,14 +63,12 @@ export const INERT_EXPERIMENT_ASSIGNMENTS_RESPONSE: ExperimentAssignmentsRespons
 	assignments: {},
 };
 
-export function readVoiceNoiseSuppressionAssignment(
+export function readDomainMigrationAssignment(
 	response: ExperimentAssignmentsResponse,
-): VoiceNoiseSuppressionAssignmentResponse {
-	return response.assignments.voice_noise_suppression ?? INERT_VOICE_NOISE_SUPPRESSION_ASSIGNMENT;
+): DomainMigrationAssignmentResponse {
+	return response.assignments.domain_migration ?? INERT_DOMAIN_MIGRATION_ASSIGNMENT;
 }
 
-export function readScreenShareDeliveryAssignment(
-	response: ExperimentAssignmentsResponse,
-): ScreenShareDeliveryAssignmentResponse {
-	return response.assignments.screen_share_delivery ?? INERT_SCREEN_SHARE_DELIVERY_ASSIGNMENT;
+export function readPlutoniumPageAssignment(response: ExperimentAssignmentsResponse): PlutoniumPageAssignmentResponse {
+	return response.assignments.plutonium_page ?? INERT_PLUTONIUM_PAGE_ASSIGNMENT;
 }

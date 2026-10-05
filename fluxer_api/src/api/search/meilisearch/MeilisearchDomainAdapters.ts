@@ -52,7 +52,8 @@ function snowflakeSeconds(snowflake: string): number {
 
 function buildSort(sortBy: string, sortOrder: 'asc' | 'desc' | undefined): Array<string> | undefined {
 	if (sortBy === 'relevance') return undefined;
-	return [`${sortBy}:${sortOrder ?? 'desc'}`, 'id:desc'];
+	const direction = sortOrder ?? 'desc';
+	return [`${sortBy}:${direction}`, `id:${direction}`];
 }
 
 function buildTimestampSort(filters: MessageSearchFilters | AuditLogSearchFilters): Array<string> | undefined {
@@ -170,9 +171,6 @@ function buildUserFilters(filters: UserSearchFilters): Array<MeilisearchFilter |
 		);
 	}
 	if (filters.hasAcl && filters.hasAcl.length > 0) clauses.push(...meiliAndTerms('acls', filters.hasAcl));
-	if (filters.minSuspiciousActivityFlags !== undefined) {
-		clauses.push(meiliRangeFilter('suspiciousActivityFlags', {gte: filters.minSuspiciousActivityFlags}));
-	}
 	if (filters.createdAtGreaterThanOrEqual !== undefined) {
 		clauses.push(meiliRangeFilter('createdAt', {gte: filters.createdAtGreaterThanOrEqual}));
 	}
