@@ -9,6 +9,7 @@ export const ChannelTypes = {
 	GROUP_DM: 3,
 	GUILD_CATEGORY: 4,
 	GUILD_ANNOUNCEMENT: 5,
+	GUILD_CALENDAR: 997,
 	GUILD_LINK: 998,
 	DM_PERSONAL_NOTES: 999,
 } as const;
@@ -200,6 +201,8 @@ export const Permissions = {
 	BYPASS_SLOWMODE: 1n << 52n,
 	UPDATE_RTC_REGION: 1n << 53n,
 	VIEW_CHANNEL_MEMBERS: 1n << 54n,
+	CREATE_EVENTS: 1n << 56n,
+	MANAGE_EVENTS: 1n << 57n,
 } as const;
 export const PermissionsDescriptions: Record<keyof typeof Permissions, string> = {
 	CREATE_INSTANT_INVITE: 'Allows creation of instant invites',
@@ -239,6 +242,8 @@ export const PermissionsDescriptions: Record<keyof typeof Permissions, string> =
 	BYPASS_SLOWMODE: 'Allows bypassing slowmode',
 	UPDATE_RTC_REGION: 'Allows updating the voice region',
 	VIEW_CHANNEL_MEMBERS: 'Allows viewing the member list in a channel',
+	CREATE_EVENTS: 'Allows creating events in calendar channels',
+	MANAGE_EVENTS: 'Allows editing and deleting events created by other members',
 };
 export const ALL_PERMISSIONS = Object.values(Permissions).reduce((acc, p) => acc | p, 0n);
 export const DEFAULT_PERMISSIONS =
@@ -267,5 +272,6 @@ export const ElevatedPermissions =
 	Permissions.MANAGE_MESSAGES |
 	Permissions.MANAGE_WEBHOOKS |
 	Permissions.MANAGE_EXPRESSIONS |
-	Permissions.MODERATE_MEMBERS;
+	Permissions.MODERATE_MEMBERS |
+	Permissions.MANAGE_EVENTS;
 export const CHANNEL_REINDEX_AFTER_TIMESTAMP = 1779557400;
