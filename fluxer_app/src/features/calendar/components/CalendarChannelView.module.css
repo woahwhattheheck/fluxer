@@ -1,0 +1,13 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+.root{display:flex;min-height:0;height:100%;flex-direction:column;background:var(--background-primary);color:var(--text-primary)}
+.toolbar{display:flex;align-items:center;justify-content:space-between;gap:.75rem;padding:.875rem 1rem;border-bottom:1px solid var(--background-modifier-accent)}
+.titleGroup{display:flex;min-width:0;align-items:center;gap:.625rem}.title{margin:0;overflow:hidden;font-size:1.05rem;font-weight:700;text-overflow:ellipsis;white-space:nowrap}
+.actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:.5rem}.scroll{min-height:0;flex:1;overflow:auto;padding:1rem}
+.error{margin:0 0 1rem;padding:.75rem;border:1px solid var(--status-danger);border-radius:.5rem;color:var(--status-danger)}
+.form{margin-bottom:1rem;padding:1rem;border:1px solid var(--background-modifier-accent);border-radius:.75rem;background:var(--background-secondary)}
+.formGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem}.field{display:flex;min-width:0;flex-direction:column;gap:.35rem;font-size:.85rem;font-weight:600}.fieldWide{grid-column:1/-1}
+.input,.select,.textarea{width:100%;box-sizing:border-box;padding:.625rem .75rem;border:1px solid var(--background-modifier-accent);border-radius:.45rem;background:var(--input-background);color:var(--text-primary);font:inherit;font-weight:400}.textarea{min-height:5rem;resize:vertical}
+.formActions{display:flex;justify-content:flex-end;gap:.5rem;margin-top:.75rem}.events{display:grid;grid-template-columns:repeat(auto-fill,minmax(17rem,1fr));gap:.75rem}
+.eventCard{display:flex;min-width:0;flex-direction:column;gap:.65rem;padding:.9rem;border:1px solid var(--background-modifier-accent);border-radius:.75rem;background:var(--background-secondary)}
+.eventHeader{display:flex;align-items:flex-start;justify-content:space-between;gap:.5rem}.eventName{margin:0;font-size:1rem;font-weight:700;overflow-wrap:anywhere}.eventTime,.eventMeta,.description{margin:0;color:var(--text-secondary);font-size:.86rem;line-height:1.4}.eventActions{display:flex;flex-wrap:wrap;gap:.45rem;margin-top:auto}.empty{padding:3rem 1rem;text-align:center;color:var(--text-secondary)}
+@media(max-width:42rem){.toolbar{align-items:flex-start;flex-direction:column}.actions{width:100%;justify-content:flex-start}.scroll{padding:.75rem}.formGrid{grid-template-columns:1fr}.events{grid-template-columns:1fr}}
