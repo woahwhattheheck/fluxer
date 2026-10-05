@@ -3,6 +3,7 @@
 import {
 	createChannelID,
 	createEventID,
+	type ChannelID,
 	type EventID,
 	type GuildID,
 	type UserID,
@@ -44,7 +45,7 @@ export class CalendarEventService {
 		guildId: GuildID;
 		userId: UserID;
 		permission: bigint;
-		channelId?: bigint;
+		channelId?: ChannelID;
 	}): Promise<void> {
 		const allowed = await this.gatewayService.checkPermission({
 			guildId: params.guildId,
