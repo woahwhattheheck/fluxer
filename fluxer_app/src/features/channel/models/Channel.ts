@@ -164,6 +164,10 @@ export class Channel {
 		return this.type === ChannelTypes.GUILD_ANNOUNCEMENT;
 	}
 
+	isGuildCalendar(): boolean {
+		return this.type === ChannelTypes.GUILD_CALENDAR;
+	}
+
 	isGuildVoice(): boolean {
 		return this.type === ChannelTypes.GUILD_VOICE;
 	}
@@ -189,6 +193,7 @@ export class Channel {
 			this.guildId == null ||
 			(this.type !== ChannelTypes.GUILD_TEXT &&
 				this.type !== ChannelTypes.GUILD_ANNOUNCEMENT &&
+				this.type !== ChannelTypes.GUILD_CALENDAR &&
 				this.type !== ChannelTypes.GUILD_VOICE &&
 				this.type !== ChannelTypes.GUILD_LINK)
 		) {
