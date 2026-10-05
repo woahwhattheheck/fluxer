@@ -9,6 +9,7 @@ import type {DesktopHandoffService} from '@app/api/auth/services/DesktopHandoffS
 import type {SsoService} from '@app/api/auth/services/SsoService';
 import type {ApplicationID, UserID} from '@app/api/BrandedTypes';
 import type {IBlueskyOAuthService} from '@app/api/bluesky/IBlueskyOAuthService';
+import type {CalendarEventService} from '@app/api/calendar/CalendarEventService';
 import type {IChannelRepository} from '@app/api/channel/IChannelRepository';
 import type {ChannelRequestService} from '@app/api/channel/services/ChannelRequestService';
 import type {ChannelService} from '@app/api/channel/services/ChannelService';
@@ -121,6 +122,7 @@ export interface HonoEnv {
 		authSession: AuthSession;
 		desktopHandoffService: DesktopHandoffService;
 		cacheService: ICacheService;
+		calendarEventService: CalendarEventService;
 		channelService: ChannelService;
 		channelRequestService: ChannelRequestService;
 		messageRequestService: MessageRequestService;
