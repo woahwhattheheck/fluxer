@@ -30,6 +30,7 @@ export const ChannelTypeSchema = createInt32EnumType(
 			'GUILD_ANNOUNCEMENT',
 			'A guild channel whose messages can be published to channels that follow it',
 		],
+		[ChannelTypes.GUILD_CALENDAR, 'GUILD_CALENDAR', 'A guild calendar channel for community events'],
 		[ChannelTypes.GUILD_LINK, 'GUILD_LINK', 'A link channel for external resources'],
 		[ChannelTypes.DM_PERSONAL_NOTES, 'DM_PERSONAL_NOTES', 'Personal notes DM channel'],
 	],
