@@ -146,6 +146,11 @@ const ChannelCreateAnnouncementRequest = ChannelCreateCommon.extend({
 	name: GeneralChannelNameType.describe('The name of the channel'),
 });
 
+const ChannelCreateCalendarRequest = ChannelCreateCommon.extend({
+	type: createNamedLiteral(ChannelTypes.GUILD_CALENDAR, 'GUILD_CALENDAR', 'Channel type (calendar channel)'),
+	name: GeneralChannelNameType.describe('The name of the calendar'),
+});
+
 const ChannelCreateVoiceRequest = ChannelCreateCommon.extend({
 	type: createNamedLiteral(ChannelTypes.GUILD_VOICE, 'GUILD_VOICE', 'Channel type (voice channel)'),
 	name: GeneralChannelNameType.describe('The name of the channel'),
@@ -164,6 +169,7 @@ const ChannelCreateLinkRequest = ChannelCreateCommon.extend({
 export const ChannelCreateRequest = z.discriminatedUnion('type', [
 	ChannelCreateTextRequest,
 	ChannelCreateAnnouncementRequest,
+	ChannelCreateCalendarRequest,
 	ChannelCreateVoiceRequest,
 	ChannelCreateCategoryRequest,
 	ChannelCreateLinkRequest,
@@ -183,6 +189,11 @@ const ChannelUpdateAnnouncementRequest = ChannelUpdateCommon.extend({
 		'Channel type (announcement channel)',
 	),
 	name: GeneralChannelNameType.nullish().describe('The name of the channel'),
+});
+
+const ChannelUpdateCalendarRequest = ChannelUpdateCommon.extend({
+	type: createNamedLiteral(ChannelTypes.GUILD_CALENDAR, 'GUILD_CALENDAR', 'Channel type (calendar channel)'),
+	name: GeneralChannelNameType.nullish().describe('The name of the calendar'),
 });
 
 const ChannelUpdateVoiceRequest = ChannelUpdateCommon.extend({
@@ -213,6 +224,7 @@ const ChannelUpdateGroupDmRequest = z.object({
 export const ChannelUpdateRequest = z.discriminatedUnion('type', [
 	ChannelUpdateTextRequest,
 	ChannelUpdateAnnouncementRequest,
+	ChannelUpdateCalendarRequest,
 	ChannelUpdateVoiceRequest,
 	ChannelUpdateCategoryRequest,
 	ChannelUpdateLinkRequest,
