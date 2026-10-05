@@ -20,6 +20,7 @@ export type UserID = Brand<bigint, 'UserID'>;
 export type GuildID = Brand<bigint, 'GuildID'>;
 export type ChannelID = Brand<bigint, 'ChannelID'>;
 export type MessageID = Brand<bigint, 'MessageID'>;
+export type EventID = Brand<bigint, 'EventID'>;
 export type RoleID = Brand<bigint, 'RoleID'>;
 export type EmojiID = Brand<bigint, 'EmojiID'>;
 export type WebhookID = Brand<bigint, 'WebhookID'>;
@@ -54,6 +55,10 @@ export function createChannelID<T extends bigint>(id: T extends BrandedValue ? n
 
 export function createMessageID<T extends bigint>(id: T extends BrandedValue ? never : T): MessageID {
 	return brand<T, 'MessageID'>(id);
+}
+
+export function createEventID<T extends bigint>(id: T extends BrandedValue ? never : T): EventID {
+	return brand<T, 'EventID'>(id);
 }
 
 export function createRoleID<T extends bigint>(id: T extends BrandedValue ? never : T): RoleID {
